@@ -189,7 +189,7 @@ int llopen(LinkLayer connectionParameters)
         }
     }
 
-    return 1;
+    return -1;
 }
 
 ////////////////////////////////////////////////
