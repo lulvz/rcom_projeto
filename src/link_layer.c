@@ -10,6 +10,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -41,6 +42,62 @@ enum CheckRecv {
     Bcc_OK,
 };
 
+// returns TRUE if the SET packet was received correctly
+int check_SET_Frame(int fd) {
+    enum CheckRecv rc = Start;
+    unsigned char recv[1] = {0};
+    unsigned char ac[2] = {0};
+    while(1){
+        read(fd, recv, 1);
+        switch(rc) {
+            case Start: {
+                if(recv[0] == FLAG) {
+                    rc = Flag_Rcv;
+                    break;
+                } 
+                return FALSE;
+            }
+            case Flag_Rcv: {
+                if(recv[0] == A_FRAME_SENDER) {
+                    rc = A_Rcv;
+                    ac[0] = recv[0];
+                    break;
+                } else if (recv[1] == FLAG) {
+                    rc = Flag_Rcv;
+                }
+                return FALSE;
+            }
+            case A_Rcv: {
+                if(recv[0] == C_SET) {
+                    rc = C_Rcv;
+                    ac[1] = recv[0];
+                    break;
+                } else if (recv[0] == FLAG) {
+                    rc = Flag_Rcv;
+                    break;
+                }
+                return FALSE;
+            }
+            case C_Rcv: {
+                if(recv[0] == (ac[0] ^ ac[1])) {
+                    rc = Bcc_OK;
+                    break;
+                } else if (recv[0] == FLAG) {
+                    rc = Flag_Rcv;
+                    break;
+                }
+                return FALSE;
+            }
+            case Bcc_OK: {
+                if(recv[0] == FLAG) {
+                    return TRUE;
+                }
+            }
+        }
+    }
+    return FALSE;
+}
+// returns TRUE if the UA packet was received correctly
 int check_UA_Response(int fd) {
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
@@ -96,6 +153,50 @@ int check_UA_Response(int fd) {
     return FALSE;
 }
 
+int send_SET_Frame(int fd, LinkLayer connectionParameters) {
+    unsigned char SET_Packet[BUF_SIZE];
+    // open the connection by writing a SET control packet
+    SET_Packet[0] = FLAG;
+    SET_Packet[1] = A_FRAME_SENDER;
+    SET_Packet[2] = C_SET;
+    SET_Packet[3] = (buf[1] ^ buf[2]);
+    SET_Packet[4] = FLAG;
+
+    // write packet to cable
+    write(fd, SET_Packet, BUF_SIZE);
+    printf("SET packet sent.\n");
+
+    return 0;
+}
+
+int send_UA_Frame(int fd, LinkLayer connectionParameters) {
+    unsigned char UA_Packet[BUF_SIZE];
+    // open the connection by writing a SET control packet
+    UA_Packet[0] = FLAG;
+    UA_Packet[1] = A_ANSWER_SENDER;
+    UA_Packet[2] = C_UA;
+    UA_Packet[3] = (buf[1] ^ buf[2]);
+    UA_Packet[4] = FLAG;
+
+    // write packet to cable
+    write(fd, UA_Packet, BUF_SIZE);
+    printf("UA packet sent.\n");
+
+    return 0;
+}
+
+// alarm setter function
+void setAlarm(int seconds) {
+    alarm(3); // Set the initial alarm for 3 seconds
+    alarmEnabled = TRUE;
+}
+
+void removeAlarm() {
+    alarmEnabled = FALSE;
+    alarm(0);
+    alarmCount = 0;
+}
+
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
     alarmCount++;
@@ -112,9 +213,8 @@ void alarmHandler(int signal) {
     int bytes = write(fd, buf, BUF_SIZE);
     printf("%d bytes written\n", bytes);
 
-        // Set the alarm again for the next attempt
-    alarm(3);
-    alarmEnabled = TRUE;
+    // Set the alarm again for the next attempt
+    setAlarm(3);
 }
 
 ////////////////////////////////////////////////
@@ -163,32 +263,51 @@ int llopen(LinkLayer connectionParameters)
         return -1; // Return an error code
     }
 
-    unsigned char SET_Packet[BUF_SIZE];
-    // open the connection by writing a SET control packet
-    SET_Packet[0] = FLAG;
-    SET_Packet[1] = A_FRAME_SENDER;
-    SET_Packet[2] = C_SET;
-    SET_Packet[3] = (buf[1] ^ buf[2]);
-    SET_Packet[4] = FLAG;
+    if(connectionParameters.role == LlTx) {
+        if(send_SET_Frame(fd, connectionParameters) == -1) {
+            printf("Error sending SET packet.\n");
+            return -1;
+        } else {
+            printf("SET packet sent.\n");
+        }
+        // set alarm handler
+        (void)signal(SIGALRM, alarmHandler);
+        // set alarm
+        setAlarm(3);
 
-    (void)signal(SIGALRM, alarmHandler);
-    alarm(3); // Set the initial alarm for 3 seconds
-    alarmEnabled = TRUE;
+        // send SET packet and wait for UA response nRetransmissions times
+        while(alarmCount < connectionParameters.nRetransmissions) {
+            if(check_UA_Response(fd)) {
+                printf("Received correct UA packet from receiver.\nOpening connection.\n");
+                alarmEnabled = FALSE;
+                alarm(0);
+                alarmCount = 0;
+                return 0;
+            }
+        }
+    } else if(connectionParameters.role == LlRx) {
+        // set alarm handler
+        (void)signal(SIGALRM, alarmHandler);
+        // set alarm
+        setAlarm(3);
 
-    // write packet to cable
-    write(fd, SET_Packet, BUF_SIZE);
-
-    // try to send SET packets every 3 seconds until timeout reached
-    while(alarmCount < connectionParameters.timeout) {
-        if(check_UA_Response(fd)) {
-            printf("Received correct UA response from receiver.\nOpening connection.\n");
-            alarmEnabled = FALSE;
-            alarm(0);
-            alarmCount = 0;
-            return 0;
+        // wait for SET packet and send UA response
+        while(alarmCount < connectionParameters.nRetransmissions) {
+            if(check_SET_Frame(fd)) {
+                printf("Received correct SET packet from sender.\nSending UA packet.\n");
+                alarmEnabled = FALSE;
+                alarm(0);
+                alarmCount = 0;
+                if(send_UA_Frame(fd, connectionParameters) == -1) {
+                    printf("Error sending UA packet.\n");
+                    return -1;
+                } else {
+                    printf("UA packet sent.\n");
+                }
+                return 0;
+            }
         }
     }
-
     return -1;
 }
 

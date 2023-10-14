@@ -5,6 +5,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
@@ -12,13 +16,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     if (strcmp(role, "tx") == 0)
     {
         LinkLayer ll;
-        strncpy(ll.serialPort, serialPort);
-        ll.role = "tx";
+        strcpy(ll.serialPort, serialPort);
+        ll.role = LlTx;
         ll.baudRate = baudRate;
         ll.nRetransmissions = nTries;
         ll.timeout = timeout;
 
-        if (llOpen(ll) == -1)
+        if (llopen(ll) == -1)
         {
             printf("Error opening serial port\n");
             exit(-1);
@@ -67,23 +71,17 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("Error sending file\n");
             exit(-1);
         }
-
-        if (llClose() == -1)
-        {
-            printf("Error closing serial port\n");
-            exit(-1);
-        }
     }
     else if (strcmp(role, "rx") == 0)
     {
-        LinkLayer ll;
-        strncpy(ll.serialPort, serialPort);
-        ll.role = "rx";
+        LinkLayer ll = {0};
+        strcpy(ll.serialPort, serialPort);
+        ll.role = LlRx;
         ll.baudRate = baudRate;
         ll.nRetransmissions = nTries;
         ll.timeout = timeout;
 
-        if (llOpen(ll) == -1)
+        if (llopen(ll) == -1)
         {
             printf("Error opening serial port\n");
             exit(-1);
@@ -91,7 +89,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         // receive file
         unsigned char *fileBuffer; // will be dynamic memory allocated
-        int fileSize = llread(&fileBuffer);
+        int fileSize = llread(fileBuffer);
         if (fileSize == -1)
         {
             printf("Error receiving file\n");
@@ -119,16 +117,15 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         close(fd);
-
-        if (llClose() == -1)
-        {
-            printf("Error closing serial port\n");
-            exit(-1);
-        }
     }
     else
     {
         printf("Invalid role\n");
+        exit(-1);
+    }
+    if (llclose(FALSE) == -1)
+    {
+        printf("Error closing serial port\n");
         exit(-1);
     }
 }
