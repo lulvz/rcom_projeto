@@ -15,7 +15,7 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
-#define BUF_SIZE 256
+#define BUF_SIZE 256 // TODO MAKE THIS BETTER IDK HOW IT WORK OR WHERE IT COMEs FROM
 
 #define FLAG 0x7E
 #define A_FRAME_SENDER 0x03
@@ -49,6 +49,7 @@ int check_SET_Frame(int fd) {
     unsigned char ac[2] = {0};
     while(1){
         read(fd, recv, 1);
+        printf("Received: %x\n", recv[0]);
         switch(rc) {
             case Start: {
                 if(recv[0] == FLAG) {
@@ -104,28 +105,33 @@ int check_UA_Response(int fd) {
     unsigned char ac[2] = {0};
     while(1){
         read(fd, recv, 1);
+        printf("Received: %x\n", recv[0]);
         switch(rc) {
             case Start: {
+                printf("Start\n");
                 if(recv[0] == FLAG) {
                     rc = Flag_Rcv;
                     break;
-                } 
+                }
                 return FALSE;
             }
             case Flag_Rcv: {
+                printf("Flag_Rcv\n");
                 if(recv[0] == A_ANSWER_RECEIVER) {
                     rc = A_Rcv;
-                    ac[0] = recv[0];
+                    ac[0] = A_ANSWER_RECEIVER;
                     break;
                 } else if (recv[1] == FLAG) {
                     rc = Flag_Rcv;
+                    break;
                 }
                 return FALSE;
             }
             case A_Rcv: {
+                printf("A_Rcv\n");
                 if(recv[0] == C_UA) {
                     rc = C_Rcv;
-                    ac[1] = recv[0];
+                    ac[1] = C_UA;
                     break;
                 } else if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
@@ -134,6 +140,7 @@ int check_UA_Response(int fd) {
                 return FALSE;
             }
             case C_Rcv: {
+                printf("C_Rcv\n");
                 if(recv[0] == (ac[0] ^ ac[1])) {
                     rc = Bcc_OK;
                     break;
@@ -144,9 +151,11 @@ int check_UA_Response(int fd) {
                 return FALSE;
             }
             case Bcc_OK: {
+                printf("Bcc_OK\n");
                 if(recv[0] == FLAG) {
                     return TRUE;
                 }
+                return FALSE;
             }
         }
     }
@@ -159,30 +168,30 @@ int send_SET_Frame(int fd, LinkLayer connectionParameters) {
     SET_Packet[0] = FLAG;
     SET_Packet[1] = A_FRAME_SENDER;
     SET_Packet[2] = C_SET;
-    SET_Packet[3] = (buf[1] ^ buf[2]);
+    SET_Packet[3] = (A_FRAME_SENDER ^ C_SET);
     SET_Packet[4] = FLAG;
 
     // write packet to cable
-    write(fd, SET_Packet, BUF_SIZE);
-    printf("SET packet sent.\n");
+    write(fd, SET_Packet, 5);
+    // printf("SET packet sent.\n");
 
-    return 0;
+    return TRUE;
 }
 
 int send_UA_Frame(int fd, LinkLayer connectionParameters) {
     unsigned char UA_Packet[BUF_SIZE];
     // open the connection by writing a SET control packet
     UA_Packet[0] = FLAG;
-    UA_Packet[1] = A_ANSWER_SENDER;
+    UA_Packet[1] = A_ANSWER_RECEIVER;
     UA_Packet[2] = C_UA;
-    UA_Packet[3] = (buf[1] ^ buf[2]);
+    UA_Packet[3] = (A_ANSWER_RECEIVER ^ C_UA);
     UA_Packet[4] = FLAG;
 
     // write packet to cable
-    write(fd, UA_Packet, BUF_SIZE);
-    printf("UA packet sent.\n");
+    write(fd, UA_Packet, 5);
+    // printf("UA packet sent.\n");
 
-    return 0;
+    return TRUE;
 }
 
 // alarm setter function
@@ -200,21 +209,6 @@ void removeAlarm() {
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
     alarmCount++;
-
-    printf("Alarm #%d: Resending the packet.\n", alarmCount);
-
-    unsigned char buf[BUF_SIZE] = {0};
-    buf[0] = 0x7E;
-    buf[1] = 0x03;
-    buf[2] = 0x03;
-    buf[3] = buf[1] ^ buf[2];
-    buf[4] = 0x7E;
-
-    int bytes = write(fd, buf, BUF_SIZE);
-    printf("%d bytes written\n", bytes);
-
-    // Set the alarm again for the next attempt
-    setAlarm(3);
 }
 
 ////////////////////////////////////////////////
@@ -273,38 +267,59 @@ int llopen(LinkLayer connectionParameters)
         // set alarm handler
         (void)signal(SIGALRM, alarmHandler);
         // set alarm
-        setAlarm(3);
+        setAlarm(connectionParameters.timeout);
+
+        if(check_UA_Response(fd)) {
+            printf("Received correct UA packet from receiver.\n");
+            removeAlarm();
+            return 1;
+        }
 
         // send SET packet and wait for UA response nRetransmissions times
         while(alarmCount < connectionParameters.nRetransmissions) {
-            if(check_UA_Response(fd)) {
-                printf("Received correct UA packet from receiver.\nOpening connection.\n");
-                alarmEnabled = FALSE;
-                alarm(0);
-                alarmCount = 0;
-                return 0;
+            if(!alarmEnabled) {
+                printf("Alarm #%d: Resending the packet.\n", alarmCount);
+
+                if(send_SET_Frame(fd, connectionParameters) == -1) {
+                    printf("Error sending SET packet.\n");
+                    return -1;
+                } else {
+                    printf("SET packet sent.\n");
+                }
+
+                if(check_UA_Response(fd)) {
+                    printf("Received correct UA packet from receiver.\n");
+                    removeAlarm();
+                    return 1;
+                }
+
+                // Set the alarm again for the next attempt
+                setAlarm(connectionParameters.timeout);
             }
         }
     } else if(connectionParameters.role == LlRx) {
         // set alarm handler
         (void)signal(SIGALRM, alarmHandler);
         // set alarm
-        setAlarm(3);
+        setAlarm(connectionParameters.timeout);
 
         // wait for SET packet and send UA response
         while(alarmCount < connectionParameters.nRetransmissions) {
+            if(!alarmEnabled) {
+                printf("Alarm #%d: Resending the packet.\n", alarmCount);
+                // Set the alarm again for the next attempt
+                setAlarm(connectionParameters.timeout);
+            }
             if(check_SET_Frame(fd)) {
                 printf("Received correct SET packet from sender.\nSending UA packet.\n");
-                alarmEnabled = FALSE;
-                alarm(0);
-                alarmCount = 0;
+                removeAlarm();
                 if(send_UA_Frame(fd, connectionParameters) == -1) {
                     printf("Error sending UA packet.\n");
                     return -1;
                 } else {
                     printf("UA packet sent.\n");
                 }
-                return 0;
+                return 1;
             }
         }
     }

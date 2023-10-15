@@ -10,6 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+// The application control packets look like this:
+// | C | T1 | L1 | V1 | T2 | L2 | V2 | ... | Tn | Ln | Vn |
+
+// The application data packets look like this:
+// | C | L2 | L1 | P1 | P2 | ... | Pn |
+
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
