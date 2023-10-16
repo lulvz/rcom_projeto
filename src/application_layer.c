@@ -77,6 +77,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("Error sending file\n");
             exit(-1);
         }
+
+        free(fileBuffer);
+
+        llclose(FALSE);
     }
     else if (strcmp(role, "rx") == 0)
     {
@@ -95,6 +99,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         // receive file
         unsigned char *fileBuffer; // will be dynamic memory allocated
+        printf("Waiting for file...\n");
         int fileSize = llread(fileBuffer);
         if (fileSize == -1)
         {
@@ -104,12 +109,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         // write file
         int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        printf("Writing file...\n");
         if (fd == -1)
         {
             printf("Error opening file\n");
             exit(-1);
         }
 
+        printf("File size: %d\n", fileSize);
+        printf("File buffer[0]: %x\n", fileBuffer[0]);
+        printf("File buffer[1]: %x\n", fileBuffer[1]);
         int bytesWritten = write(fd, fileBuffer, fileSize);
         if (bytesWritten == -1)
         {
@@ -123,6 +132,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         close(fd);
+
+        free(fileBuffer);
+
+        llclose(FALSE);
     }
     else
     {
