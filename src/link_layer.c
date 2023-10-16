@@ -587,7 +587,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {    
-    packet = malloc(MAX_FRAME_SIZE);
+    // packet = malloc(MAX_FRAME_SIZE);
 
     // the expected sequence number is the sequence number we have currenlty
     int dataSize = decodeInformationFrame(fd, sequenceNumber, packet);
