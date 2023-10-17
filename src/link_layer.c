@@ -535,48 +535,44 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize)
+int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY ONE PACKET FROM THE APPLICATION WITH THE MAXIMUM SIZE OF 1000 BYTES
 {
-    int numFrames = (bufSize + MAX_FRAME_SIZE - 1) / MAX_FRAME_SIZE; // Calculate the number of frames
+    if(bufSize > MAX_PAYLOAD_SIZE) {
+        printf("Error: bufSize is bigger than the maximum payload size.\n");
+        return -1;
+    }
+    // Create the I-frame
+    Frame frame = createInformationFrame(buf, bufSize, sequenceNumber, A_FRAME_SENDER);
 
-    for (int i = 0; i < numFrames; i++) {
-        // Calculate the size of this frame, which is the minimum between the remaining data size and the maximum frame size
-        int frameSize = (bufSize >= MAX_FRAME_SIZE) ? MAX_FRAME_SIZE : bufSize;
+    // Send frame
+    write(fd, frame.data, frame.size);
 
-        // Create the I-frame
-        Frame frame = createInformationFrame(buf, frameSize, sequenceNumber, A_FRAME_SENDER);
-        buf += frameSize;
-        bufSize -= frameSize;
+    // Set alarm
+    setAlarm(cp.timeout);
 
-        // Send frame
-        write(fd, frame.data, frame.size);
+    // Wait for ACK
+    while (alarmCount < cp.nRetransmissions) {
+        if (!alarmEnabled) {
+            // Handle retransmission
+            printf("Alarm #%d: Resending the packet.\n", alarmCount);
+            write(fd, frame.data, frame.size);
 
-        // Set alarm
-        setAlarm(cp.timeout);
-
-        // Wait for ACK
-        while (alarmCount < cp.nRetransmissions) {
-            if (!alarmEnabled) {
-                // Handle retransmission
-                printf("Alarm #%d: Resending the packet.\n", alarmCount);
-                write(fd, frame.data, frame.size);
-
-                // Set the alarm again for the next attempt
-                setAlarm(cp.timeout);
-            }
-
-            // Check for ACK response
-            if (checkACKResponse(fd, sequenceNumber)) {
-                // ACK received
-                removeAlarm();
-                sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
-                break; // Move to the next frame
-            }
+            // Set the alarm again for the next attempt
+            setAlarm(cp.timeout);
         }
-        if(alarmCount >= cp.nRetransmissions) {
-            printf("Error sending frame.\n");
-            return -1;
+
+        // Check for ACK response
+        if (checkACKResponse(fd, sequenceNumber)) {
+            // ACK received
+            removeAlarm();
+            lastAckReceived = sequenceNumber;
+            sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+            break; // Move to the next frame
         }
+    }
+    if(alarmCount >= cp.nRetransmissions) {
+        printf("Error sending frame.\n");
+        return -1;
     }
 
     return 1; // Successful transmission
@@ -585,7 +581,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packet)
+int llread(unsigned char *packet) // packet has 1000bytes size
 {    
     // packet = malloc(MAX_FRAME_SIZE);
 

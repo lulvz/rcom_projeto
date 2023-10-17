@@ -98,7 +98,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         // receive file
-        unsigned char *fileBuffer = malloc(MAX_PAYLOAD_SIZE);
+        unsigned char fileBuffer[MAX_PAYLOAD_SIZE];
         printf("Waiting for file...\n");
         int fileSize = llread(fileBuffer);
         if (fileSize == -1)
@@ -132,8 +132,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         close(fd);
-
-        free(fileBuffer);
 
         llclose(FALSE);
     }
