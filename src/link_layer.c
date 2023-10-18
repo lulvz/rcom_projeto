@@ -526,7 +526,13 @@ int llread(unsigned char *packet) // packet has 1000bytes size
 
     printf("Received data: %s", packet);
     // Send RR frame
-    write(fd, rrFrame.data, rrFrame.size);
+    if(write(fd, rrFrame.data, rrFrame.size) == -1) {
+        printf("Error sending RR packet.\n");
+        return -1;
+    } else {
+        printf("RR packet sent.\n");
+        sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+    }
 
     return dataSize; // Return the size of the combined data
 }
