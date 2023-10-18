@@ -79,8 +79,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         free(fileBuffer);
-
-        llclose(FALSE);
     }
     else if (strcmp(role, "rx") == 0)
     {
@@ -132,8 +130,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         close(fd);
-
-        llclose(FALSE);
     }
     else
     {

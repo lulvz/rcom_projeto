@@ -48,6 +48,7 @@ int fd;
 unsigned char buf[MAX_FRAME_SIZE] = {0};
 
 LinkLayer cp;
+struct termios oldtioSave; // Save current port settings
 
 enum CheckRecv {
     Start,
@@ -188,6 +189,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                     dataXor ^= data[i];
                 }
                 if(dataXor == data[dataSize]) {
+                    data[dataSize] = '\0'; // remove bcc2 from data array
                     printf("BCC2 OK\n");
                     return dataSize;
                 } else {
@@ -295,6 +297,7 @@ int llopen(LinkLayer connectionParameters)
     }
 
     struct termios oldtio;
+    oldtioSave = oldtio;
     struct termios newtio;
 
     // Save current port settings
@@ -519,7 +522,7 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     }
 
     // Create the RR frame, the sequence number we have to send is the one that the i-frame is going to have
-    Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | (sequenceNumber+1)%2 << 7);
+    Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | ((sequenceNumber+1)%2) << 7);
 
     printf("Received data: %s", packet);
     // Send RR frame
@@ -528,18 +531,71 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     return dataSize; // Return the size of the combined data
 }
 
+// return 1 if the connection was terminated correctly or -1 if not
+int terminate_connection(int fd) {
+    if(tcsetattr(fd, TCSANOW, &oldtioSave) == -1) {
+        perror("tcsetattr");
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 1;
+}
+
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
     if(cp.role == LlTx){
-        // Send DISC frame if we are the sender
+        // Send DISC frame if we are the sender, waits for another DISC frame, and finally sends an UA frame
+        // Send DISC frame
         Frame discFrame = createControlFrame(A_FRAME_SENDER, C_DISC);
+        if(write(fd, discFrame.data, discFrame.size) == -1) {
+            printf("Error sending DISC packet.\n");
+            return -1;
+        } else {
+            printf("DISC packet sent.\n");
+        }
+        // Wait for DISC frame
+        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_DISC)) {
+            printf("Received correct DISC packet from receiver.\n");
+        } else {
+            printf("Error receiving DISC packet from receiver.\n");
+            return -1;
+        }
+        // Send UA frame
+        Frame uaFrame = createControlFrame(A_ANSWER_SENDER, C_UA);
+        if(write(fd, uaFrame.data, uaFrame.size) == -1) {
+            printf("Error sending UA packet.\n");
+            return -1;
+        } else {
+            printf("UA packet sent, terminating connection.\n");
+            sleep(1); // wait for the receiver to receive the UA frame
+        }
     } else if(cp.role == LlRx) {
-        // Send DISC frame if we are the receiver
-        Frame discFrame = createControlFrame(A_FRAME_RECEIVER, C_DISC);
+        // Wait for DISC frame, send DISC frame, and finally waits for an UA frame
+        if(checkControlFrame(fd, A_FRAME_SENDER, C_DISC)) {
+            printf("Received correct DISC packet from sender.\n");
+            // Send DISC frame
+            Frame discFrame = createControlFrame(A_ANSWER_RECEIVER, C_DISC);
+            if(write(fd, discFrame.data, discFrame.size) == -1) {
+                printf("Error sending DISC packet.\n");
+                return -1;
+            } else {
+                printf("DISC packet sent.\n");
+            }
+        } else {
+            printf("Error receiving DISC packet from sender.\n");
+            return -1;
+        }
+        // Wait for UA frame
+        if(checkControlFrame(fd, A_ANSWER_SENDER, C_UA)) {
+            printf("Received correct UA packet from sender, terminating connection.\n");
+        } else {
+            printf("Error receiving UA packet from sender.\n");
+            return -1;
+        }
     }
-
-    return 1;
+    return terminate_connection(fd);
 }
