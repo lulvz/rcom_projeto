@@ -1,5 +1,51 @@
 #include "frame.h"
 
+// returns the size of the new stuffed data or -1 on error, should take a pointer to an array with size MAX_STUFFED_DATA_SIZE
+int stuffIt(const unsigned char *buf, int bufSize, unsigned char *stuffedData) {
+    int stuffedDataIdx = 0;
+
+    for(int i = 0; i<bufSize; i++) {
+        if(buf[i] == FLAG) {
+            stuffedData[stuffedDataIdx] = 0x7d;
+            stuffedData[stuffedDataIdx + 1] = 0x5e;
+            // 2 byte new size
+            stuffedDataIdx += 2;
+        } else if (buf[i] == 0x7d) {
+            stuffedData[stuffedDataIdx] = 0x7d;
+            stuffedData[stuffedDataIdx] = 0x5d;
+            //2 byte new size
+            stuffedDataIdx += 2;
+        } else {
+            stuffedData[stuffedDataIdx] = buf[i];
+            stuffedDataIdx++;
+        }
+    }
+
+    return stuffedDataIdx;
+}
+
+// returns the size of the de-stuffed data, this should be a pointer to an array with size MAX_PAYLOAD_SIZE
+int destuffIt(unsigned char* buf, int bufSize, unsigned char *deStuffedData) {
+    int deStuffedDataIdx = 0;
+
+    for(int i = 0; i<bufSize; i++) {
+        if(buf[i] == 0x7d) {
+            if(buf[i+1] == 0x5e) {
+                deStuffedData[deStuffedDataIdx] = FLAG;
+                i++; // advance to next byte
+            } else if(buf[i+1] == 0x5d) {
+                deStuffedData[deStuffedDataIdx] = 0x7d;
+                i++; // advance to next byte
+            }
+        } else {
+            deStuffedData[deStuffedDataIdx] = buf[i];
+        }
+        deStuffedDataIdx++;
+    }
+
+    return deStuffedDataIdx;
+}
+
 // Creation of Frames
 Frame createInformationFrame(const unsigned char *data, int dataSize, int sequenceNumber, unsigned char addressField) {
     Frame frame = {0};
@@ -10,16 +56,19 @@ Frame createInformationFrame(const unsigned char *data, int dataSize, int sequen
     frame.data[2] = (sequenceNumber << 6) | 0x00; // 0x00 = I-frame number 0 | 0x40 = I-frame number 1
     frame.data[3] = frame.data[1] ^ frame.data[2]; // BCC1
 
-    memcpy(&frame.data[4], data, dataSize);
-    
+    unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
+    int stuffedDataSize = stuffIt(data, dataSize, stuffedData);
+
+    memcpy(&frame.data[4], stuffedData, stuffedDataSize);
+
     unsigned char bcc2 = 0;
     // bcc2 is xor of all the data bytes
     for (int i = 0; i < dataSize; i++) {
         bcc2 ^= data[i];
     }
 
-    frame.data[4 + dataSize] = bcc2;
-    frame.data[4 + dataSize + 1] = FLAG;
+    frame.data[4 + stuffedDataSize] = bcc2;
+    frame.data[4 + stuffedDataSize + 1] = FLAG;
 
     return frame;
 }
@@ -42,9 +91,11 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
-    unsigned char lastByte = 0;
+    unsigned char bcc2 = 0x0;
     unsigned char dataXor = 0;
     int dataSize = 0;
+    int stuffedDataSize = 0;
+    unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
     while(1) {
         switch(rc) {
             case Start: {
@@ -101,24 +152,26 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                 read(fd, recv, 1);
                 printf("Received: %x\n", recv[0]);
                 if(recv[0] == FLAG) {
-                    dataSize--; // remove bcc2 from data size
+                    stuffedDataSize--; // remove bcc2 from data size
+                    bcc2 = stuffedData[stuffedDataSize];
                     rc = Data_Rcv;
                     break;
-                } else {
-                    data[dataSize] = recv[0];
-                    dataSize++;
+                } else if(stuffedDataSize < MAX_STUFFED_DATA_SIZE) {
+                    stuffedData[stuffedDataSize] = recv[0];
+                    stuffedDataSize++;
                     break;
                 }
                 return -1;
             }
             case Data_Rcv: {
                 // if flag was found on BCC_OK, the byte before the flag is bcc2 which is xor of all the databytes
+                dataSize = destuffIt(stuffedData, stuffedDataSize, data);
+
                 // calculate xor of data bytes (data array minus byte after dataSize)
                 for(int i = 0; i < dataSize; i++) {
                     dataXor ^= data[i];
                 }
-                if(dataXor == data[dataSize]) {
-                    data[dataSize] = '\0'; // remove bcc2 from data array
+                if(dataXor == bcc2) {
                     printf("BCC2 OK\n");
                     return dataSize;
                 } else {
@@ -192,16 +245,3 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
     }
     return FALSE;
 }
-
-
-
-// The send by the application layer must be stuffed before it is Framed
-
-/*
-int stuffIt(unsigned char *buf, int startingByte, int length, unsigned char *stuffedData){
-	int msgSize = 0;
-
-	for(int i = 0; i < startingByte; i++) stuffedData[msgSize++] = buf[i];
-
-	for()
-*/

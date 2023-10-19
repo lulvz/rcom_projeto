@@ -284,6 +284,17 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     if (dataSize == -1) {
         // Error decoding frame
         printf("Error decoding frame.\n");
+
+        // Send rej packet  
+        Frame rejFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | sequenceNumber << 7); // we reject an information frame with sequence number 
+        
+        if(write(fd, rejFrame.data, rejFrame.size) == -1) {
+            printf("Error sending RR packet.\n");
+            return -1;
+        } else {
+            printf("RR packet sent.\n");
+            sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+        }
         return -1;
     }
 
