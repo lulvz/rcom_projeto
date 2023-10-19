@@ -2,6 +2,7 @@
 
 #include "application_layer.h"
 #include "link_layer.h"
+//#include "transmitter.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -33,6 +34,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("Error opening serial port\n");
             exit(-1);
         }
+	
+	//mainTransmitter(filename);
 
         // open file and read it into a buffer
         int fd = open(filename, O_RDONLY);
