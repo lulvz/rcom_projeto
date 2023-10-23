@@ -9,8 +9,7 @@
 
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
-#define MAX_PAYLOAD_SIZE 1000
-#define MAX_STUFFED_DATA_SIZE MAX_PAYLOAD_SIZE * 2
+#define MAX_STUFFED_DATA_SIZE MAX_PAYLOAD_SIZE * 2 + 2 // plus 2 bytes for bcc2
 
 #define FLAG 0x7E
 #define A_FRAME_SENDER 0x03

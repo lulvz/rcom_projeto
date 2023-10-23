@@ -1,9 +1,10 @@
 #include "frame.h"
 
 // returns the size of the new stuffed data or -1 on error, should take a pointer to an array with size MAX_STUFFED_DATA_SIZE
-int stuffIt(const unsigned char *buf, int bufSize, unsigned char *stuffedData) {
+int stuffIt(const unsigned char *buf, int bufSize, unsigned char stuffedData[MAX_STUFFED_DATA_SIZE]) {
     int stuffedDataIdx = 0;
 
+    // stuffs all the data, including the bcc2 at the end of the payload
     for(int i = 0; i<bufSize; i++) {
         if(buf[i] == FLAG) {
             stuffedData[stuffedDataIdx] = 0x7d;
@@ -12,7 +13,7 @@ int stuffIt(const unsigned char *buf, int bufSize, unsigned char *stuffedData) {
             stuffedDataIdx += 2;
         } else if (buf[i] == 0x7d) {
             stuffedData[stuffedDataIdx] = 0x7d;
-            stuffedData[stuffedDataIdx] = 0x5d;
+            stuffedData[stuffedDataIdx + 1] = 0x5d;
             //2 byte new size
             stuffedDataIdx += 2;
         } else {
@@ -20,12 +21,12 @@ int stuffIt(const unsigned char *buf, int bufSize, unsigned char *stuffedData) {
             stuffedDataIdx++;
         }
     }
-
+    // printf("stuffedDataIdx: %i\n", stuffedDataIdx);
     return stuffedDataIdx;
 }
 
 // returns the size of the de-stuffed data, this should be a pointer to an array with size MAX_PAYLOAD_SIZE
-int destuffIt(unsigned char* buf, int bufSize, unsigned char *deStuffedData) {
+int destuffIt(unsigned char* buf, int bufSize, unsigned char deStuffedData[MAX_PAYLOAD_SIZE+1]) {
     int deStuffedDataIdx = 0;
 
     for(int i = 0; i<bufSize; i++) {
@@ -56,19 +57,31 @@ Frame createInformationFrame(const unsigned char *data, int dataSize, int sequen
     frame.data[2] = (sequenceNumber << 6) | 0x00; // 0x00 = I-frame number 0 | 0x40 = I-frame number 1
     frame.data[3] = frame.data[1] ^ frame.data[2]; // BCC1
 
-    unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
-    int stuffedDataSize = stuffIt(data, dataSize, stuffedData);
-
-    memcpy(&frame.data[4], stuffedData, stuffedDataSize);
-
     unsigned char bcc2 = 0;
     // bcc2 is xor of all the data bytes
     for (int i = 0; i < dataSize; i++) {
         bcc2 ^= data[i];
     }
 
-    frame.data[4 + stuffedDataSize] = bcc2;
-    frame.data[4 + stuffedDataSize + 1] = FLAG;
+    // add bcc2 to the end of the data to be stuffed
+    unsigned char dataWithBcc2[MAX_PAYLOAD_SIZE+1];
+    memcpy(dataWithBcc2, data, dataSize);
+    dataWithBcc2[dataSize] = bcc2;
+    // printf("bcc2 in dataWithBcc2 is %x\nbcc2 in bcc2 is %x\n", dataWithBcc2[dataSize], bcc2);
+
+    unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
+    int stuffedDataSize = stuffIt(dataWithBcc2, dataSize+1, stuffedData);
+
+    memcpy(frame.data + 4, stuffedData, stuffedDataSize);
+
+    // printf("StuffedDataSize is %i\n", stuffedDataSize);
+    frame.data[4 + stuffedDataSize] = FLAG;
+    frame.size = 4 + stuffedDataSize + 1;
+    // print contents of data
+    // printf("Frame contents:\n");
+    // for(int i = 0; i < frame.size; i++) {
+    //     printf("%x ", frame.data[i]);
+    // }
 
     return frame;
 }
@@ -91,11 +104,10 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
-    unsigned char bcc2 = 0x0;
-    unsigned char dataXor = 0;
     int dataSize = 0;
     int stuffedDataSize = 0;
     unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
+    unsigned char tmpData[MAX_PAYLOAD_SIZE+1];
     while(1) {
         switch(rc) {
             case Start: {
@@ -133,6 +145,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                     rc = Flag_Rcv;
                     break;
                 }
+                printf("Wrong sequence number\n");
                 return -1;
             }
             case C_Rcv: {
@@ -148,12 +161,10 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                 return -1;
             }
             case Bcc_OK: {
-                // fill data array with data and bcc2 dont xor
+                // fill data array with data and bcc2
                 read(fd, recv, 1);
                 printf("Received: %x\n", recv[0]);
                 if(recv[0] == FLAG) {
-                    stuffedDataSize--; // remove bcc2 from data size
-                    bcc2 = stuffedData[stuffedDataSize];
                     rc = Data_Rcv;
                     break;
                 } else if(stuffedDataSize < MAX_STUFFED_DATA_SIZE) {
@@ -165,15 +176,18 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             }
             case Data_Rcv: {
                 // if flag was found on BCC_OK, the byte before the flag is bcc2 which is xor of all the databytes
-                dataSize = destuffIt(stuffedData, stuffedDataSize, data);
+                dataSize = destuffIt(stuffedData, stuffedDataSize, tmpData);
 
-                // calculate xor of data bytes (data array minus byte after dataSize)
-                for(int i = 0; i < dataSize; i++) {
-                    dataXor ^= data[i];
+                // calculate xor of data bytes (except bcc2)
+                unsigned char dataXor = 0;
+                for(int i = 0; i < (dataSize-1); i++) {
+                    dataXor ^= tmpData[i];
                 }
-                if(dataXor == bcc2) {
+
+                if(dataXor == tmpData[dataSize-1]) {
                     printf("BCC2 OK\n");
-                    return dataSize;
+                    memcpy(data, tmpData, dataSize-1); // copy all except bcc2
+                    return dataSize-1;
                 } else {
                     return -1;
                 }
