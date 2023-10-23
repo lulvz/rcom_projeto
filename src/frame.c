@@ -49,6 +49,7 @@ int destuffIt(unsigned char* buf, int bufSize, unsigned char deStuffedData[MAX_P
 
 // Creation of Frames
 Frame createInformationFrame(const unsigned char *data, int dataSize, int sequenceNumber, unsigned char addressField) {
+	printf("Inside the createInformationFrame function\n");
     Frame frame = {0};
 
     frame.data[0] = FLAG;
@@ -107,6 +108,9 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
     int stuffedDataSize = 0;
     unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
     unsigned char tmpData[MAX_PAYLOAD_SIZE+1];
+    
+    printf("State machine of decodeInformationFrame function\n");
+
     while(1) {
         switch(rc) {
             case Start: {

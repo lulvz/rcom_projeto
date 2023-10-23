@@ -10,16 +10,32 @@
 #define END 3
 
 
-int mainReceiver(){
+int mainReceiver(const char *path){
 	int ret;
 	int numBytes = 0;
+	char *filename;
+
+	char *temp = path + strlen(path) - 1;
+	while(*temp != '/'){
+		if(temp == path) break;	
+		temp--;
+	}
+	filename = temp;
 
 	while(1){
-		unsigned char packet[MAX_PAYLOAD_SIZE];
+		printf("In the beggining\n");
+		unsigned char packet[900];
 		numBytes = llread(packet);
-		
+
+		printf("Packet received with %d bytes ", numBytes);
+		for(unsigned i = 0; i < numBytes; i++){
+    			printf("%02X ", packet[i]); // Print each byte in hexadecimal format
+			if(i == numBytes - 1) printf("\n");
+		}
+
+
 		// With the packet in hands, need to handle it
-		if((ret = (handlePacket(packet, numBytes))) < 0){
+		if((ret = (handlePacket(packet, numBytes, filename))) < 0){
 			printf("Error!!!\n");
 			return -1;
 		}
@@ -34,15 +50,17 @@ int mainReceiver(){
 }
 
 
-int handlePacket(unsigned char *packet, int numBytes){
+int handlePacket(unsigned char *packet, int numBytes, char *filename){
 	int filesize = 0;
-	char filename[50];
+	char sourceFile[50];
 	// This will be the fd that will represent the file to be written
 	static int fd;
 
 	switch(packet[0]){
 		case START :
-			{parseStartEnd(packet, numBytes, filename, &filesize);
+			{
+			printf("Parsing start packet\n");
+			parseStartEnd(packet, numBytes, sourceFile, &filesize);
 			if((fd = open(filename, O_WRONLY | O_CREAT, 0777)) < 0){
 				perror("Error opening the file in handlePacket function\n");
 				return -1;
@@ -56,16 +74,19 @@ int handlePacket(unsigned char *packet, int numBytes){
 				perror("Error writing the bytes to the fd\n");
 				return -1;
 			}
+			printf("Data packet parsed!\n");
 			return 0;}
 
 		case END :
-			{parseStartEnd(packet, numBytes, filename, &filesize);
+			{
+			printf("Parsing end packet\n");
+			parseStartEnd(packet, numBytes, filename, &filesize);
 			if(close(fd) < 0){
 				perror("Error closing the file in handlePacket\n");
 				return -1;
 			}
 			//He checks the size of the file here...
-			return 0;}	
+			return END;}	
 		
 		default :
 			{printf("Packet structure not existent\n");

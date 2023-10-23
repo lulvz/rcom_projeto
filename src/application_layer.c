@@ -54,7 +54,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }
 
-	mainReceiver();
+	mainReceiver(filename);
 
     }
     else

@@ -167,6 +167,7 @@ int llopen(LinkLayer connectionParameters)
 
 // returns TRUE if the ack packet was received correctly and is right
 int checkACKResponse(int fd, int expectedSequenceNumber) {
+	printf("In the checkACKResponse function\n");
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
@@ -215,6 +216,7 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
                 return FALSE;
             }
             case Bcc_OK: {
+		printf("In the BCCok\n");
                 if (recv[0] == FLAG) {
                     return TRUE;
                 }
@@ -230,12 +232,19 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY ONE PACKET FROM THE APPLICATION WITH THE MAXIMUM SIZE OF 1000 BYTES
 {
+	printf("Inside the llwrite function\n");
     if(bufSize > MAX_PAYLOAD_SIZE) {
         printf("Error: bufSize is bigger than the maximum payload size.\n");
         return -1;
     }
     // Create the I-frame
     Frame frame = createInformationFrame(buf, bufSize, sequenceNumber, A_FRAME_SENDER);
+
+    printf("Created information frame\n");
+	for(unsigned i = 0; i < frame.size; i++){
+    		printf("%02X ", frame.data[i]); // Print each byte in hexadecimal format
+	}
+
 
     // Send frame
     write(fd, frame.data, frame.size);
@@ -301,8 +310,11 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     // Create the RR frame, the sequence number we have to send is the one that the i-frame is going to have
     Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | ((sequenceNumber+1)%2) << 7);
 
-    printf("Received data: %s", packet);
-    printf("Packet never received...\n");
+    printf("Decoded packet\n");
+    for(unsigned i = 0; i < dataSize; i++){
+    	printf("%02X ", packet[i]); // Print each byte in hexadecimal format
+		}
+
     // Send RR frame
     if(write(fd, rrFrame.data, rrFrame.size) == -1) {
         printf("Error sending RR packet.\n");

@@ -118,7 +118,6 @@ int sendControlPacket(unsigned ctrl, unsigned fileSize, char *fileName){
 
 	for (unsigned i = 0; i < packetSize; i++) {
     		printf("%02X ", packet[i]); // Print each byte in hexadecimal format
-		if(i == 2) printf("#############\n");
 	}
 
 

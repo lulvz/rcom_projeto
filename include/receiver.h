@@ -12,10 +12,10 @@
 #include "constants.h"
 #include "link_layer.h"
 
-int mainReceiver();
+int mainReceiver(const char *path);
 
 
-int handlePacket(unsigned char *packet, int numBytes);
+int handlePacket(unsigned char *packet, int numBytes, char *filename);
 
 
 void parseStartEnd(unsigned char * buffer, int lenght, char* path, int* filesize);
