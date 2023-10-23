@@ -302,6 +302,7 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | ((sequenceNumber+1)%2) << 7);
 
     printf("Received data: %s", packet);
+    printf("Packet never received...\n");
     // Send RR frame
     if(write(fd, rrFrame.data, rrFrame.size) == -1) {
         printf("Error sending RR packet.\n");

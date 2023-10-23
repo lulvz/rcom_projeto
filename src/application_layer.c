@@ -2,7 +2,8 @@
 
 #include "application_layer.h"
 #include "link_layer.h"
-//#include "transmitter.h"
+#include "transmitter.h"
+#include "receiver.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -35,54 +36,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }
 	
-	//mainTransmitter(filename);
+	mainTransmitter(filename);
 
-        // open file and read it into a buffer
-        int fd = open(filename, O_RDONLY);
-        if (fd == -1)
-        {
-            printf("Error opening file\n");
-            exit(-1);
-        }
-
-        struct stat st;
-        if (stat(filename, &st) == -1)
-        {
-            printf("Error getting file size\n");
-            exit(-1);
-        }
-
-        int fileSize = st.st_size;
-        unsigned char *fileBuffer = malloc(fileSize);
-        if (fileBuffer == NULL)
-        {
-            printf("Error allocating memory for file buffer\n");
-            exit(-1);
-        }
-
-        int bytesRead = read(fd, fileBuffer, fileSize);
-        if (bytesRead == -1)
-        {
-            printf("Error reading file\n");
-            exit(-1);
-        }
-        if (bytesRead != fileSize)
-        {
-            printf("Error reading file\n");
-            exit(-1);
-        }
-
-        close(fd);
-
-        // send file
-        if (llwrite(fileBuffer, fileSize) == -1)
-        {
-            printf("Error sending file\n");
-            exit(-1);
-        }
-
-        free(fileBuffer);
-    }
+   }
     else if (strcmp(role, "rx") == 0)
     {
         LinkLayer ll = {0};
@@ -98,41 +54,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }
 
-        // receive file
-        unsigned char fileBuffer[MAX_PAYLOAD_SIZE];
-        printf("Waiting for file...\n");
-        int fileSize = llread(fileBuffer);
-        if (fileSize == -1)
-        {
-            printf("Error receiving file\n");
-            exit(-1);
-        }
+	mainReceiver();
 
-        // write file
-        int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-        printf("Writing file...\n");
-        if (fd == -1)
-        {
-            printf("Error opening file\n");
-            exit(-1);
-        }
-
-        printf("File size: %d\n", fileSize);
-        printf("File buffer[0]: %x\n", fileBuffer[0]);
-        printf("File buffer[1]: %x\n", fileBuffer[1]);
-        int bytesWritten = write(fd, fileBuffer, fileSize);
-        if (bytesWritten == -1)
-        {
-            printf("Error writing file\n");
-            exit(-1);
-        }
-        if (bytesWritten != fileSize)
-        {
-            printf("Error writing file\n");
-            exit(-1);
-        }
-
-        close(fd);
     }
     else
     {
