@@ -20,9 +20,9 @@ enum FrameType {
 
 // Structure of a Frame
 typedef struct {
-      unsigned char data[MAX_FRAME_SIZE];
-      int size;
-  } Frame;
+        unsigned char data[MAX_FRAME_SIZE];
+        int size;
+} Frame;
 
 
 // Creation of Frames

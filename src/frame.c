@@ -50,7 +50,6 @@ int destuffIt(unsigned char* buf, int bufSize, unsigned char deStuffedData[MAX_P
 // Creation of Frames
 Frame createInformationFrame(const unsigned char *data, int dataSize, int sequenceNumber, unsigned char addressField) {
     Frame frame = {0};
-    frame.size = dataSize + 4 + 2;
 
     frame.data[0] = FLAG;
     frame.data[1] = addressField;

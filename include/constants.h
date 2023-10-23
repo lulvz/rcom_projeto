@@ -4,13 +4,12 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
-// Maximum Frame Size = Maximum Payload Size times 2 (in case every byte is a flag or an escape sequence) + Overhead (header + trailer)
-#define MAX_FRAME_SIZE (MAX_STUFFED_DATA_SIZE + 4 + 2)
-
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
-#define MAX_PAYLOAD_SIZE 1000
-#define MAX_STUFFED_DATA_SIZE MAX_PAYLOAD_SIZE * 2
+#define MAX_STUFFED_DATA_SIZE MAX_PAYLOAD_SIZE * 2 + 2
+
+// Maximum Frame Size = Maximum Payload Size times 2 (in case every byte is a flag or an escape sequence) + Overhead (header + trailer)
+#define MAX_FRAME_SIZE (MAX_STUFFED_DATA_SIZE + 4 + 2)
 
 #define FLAG 0x7E
 #define A_FRAME_SENDER 0x03

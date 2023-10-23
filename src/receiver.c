@@ -42,37 +42,37 @@ int handlePacket(unsigned char *packet, int numBytes){
 
 	switch(packet[0]){
 		case START :
-			parseStartEnd(packet, numBytes, filename, &filesize);
+			{parseStartEnd(packet, numBytes, filename, &filesize);
 			if((fd = open(filename, O_WRONLY | O_CREAT, 0777)) < 0){
 				perror("Error opening the file in handlePacket function\n");
 				return -1;
 			}
-			return 0;
+			return 0;}
 
 		case DATA :
-			// I think I should probably check the sqNum
+			{// I think I should probably check the sqNum
 			int bytes2write = packet[2]*256 + packet[3];
 			if(write(fd,&packet[4], bytes2write) < 0){
 				perror("Error writing the bytes to the fd\n");
 				return -1;
 			}
-			return 0;
+			return 0;}
 
 		case END :
-			parseStartEnd(packet, numBytes, filename, &filesize);
+			{parseStartEnd(packet, numBytes, filename, &filesize);
 			if(close(fd) < 0){
 				perror("Error closing the file in handlePacket\n");
 				return -1;
 			}
 			//He checks the size of the file here...
-			return 0;	
+			return 0;}	
 		
 		default :
-			printf("Packet structure not existent\n");
+			{printf("Packet structure not existent\n");
 			for (int i = 0; i < numBytes; i++) {
             			printf("0x%02x ", packet[i]);
         		}
-			return -1;
+			return -1;}
 	}
 }
 
