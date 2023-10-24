@@ -83,7 +83,7 @@ int llopen(LinkLayer connectionParameters)
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // Now clean the line and activate the settings for the port
     tcflush(fd, TCIOFLUSH);
@@ -194,7 +194,7 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
                 return FALSE;
             }
             case A_Rcv: {
-                if (recv[0] == (C_RR0 | expectedSequenceNumber << 7) || recv[0] == (C_RR1 | expectedSequenceNumber << 7)) {
+                if (recv[0] == (0x05 | (expectedSequenceNumber << 7))) {
                     // Check if the received ACK/NACK corresponds to the expected sequence number.
                     rc = C_Rcv;
                     ac[1] = recv[0];
@@ -242,40 +242,48 @@ int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY 
 
     printf("Created information frame\n");
 	for(unsigned i = 0; i < frame.size; i++){
-    		printf("%02X ", frame.data[i]); // Print each byte in hexadecimal format
+        printf("%02X ", frame.data[i]); // Print each byte in hexadecimal format
 	}
-
-
+    
     // Send frame
     write(fd, frame.data, frame.size);
 
     // Set alarm
     setAlarm(cp.timeout);
 
-    // Wait for ACK
-    while (alarmCount < cp.nRetransmissions) {
-        if (!alarmEnabled) {
-            // Handle retransmission
-            printf("Alarm #%d: Resending the packet.\n", alarmCount);
-            write(fd, frame.data, frame.size);
-
-            // Set the alarm again for the next attempt
-            setAlarm(cp.timeout);
-        }
-
-        // Check for ACK response
-        if (checkACKResponse(fd, sequenceNumber)) {
-            // ACK received
-            removeAlarm();
-            lastAckReceived = sequenceNumber;
-            sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
-            break; // Move to the next frame
-        }
+    // Check for ACK response
+    if (checkACKResponse(fd, (sequenceNumber+1) %2)) {
+        // ACK received
+        removeAlarm();
+        lastAckReceived = sequenceNumber;
+        sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+        return 1;
     }
-    if(alarmCount >= cp.nRetransmissions) {
-        printf("Error sending frame.\n");
-        return -1;
-    }
+
+    // // Wait for ACK
+    // while (alarmCount < cp.nRetransmissions) {
+    //     if (!alarmEnabled) {
+    //         // Handle retransmission
+    //         printf("Alarm #%d: Resending the packet.\n", alarmCount);
+    //         write(fd, frame.data, frame.size);
+
+    //         // Set the alarm again for the next attempt
+    //         setAlarm(cp.timeout);
+
+    //         // Check for ACK response
+    //         if (checkACKResponse(fd, sequenceNumber)) {
+    //             // ACK received
+    //             removeAlarm();
+    //             lastAckReceived = sequenceNumber;
+    //             sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+    //             break; // Move to the next frame
+    //         }
+    //     }
+    // }
+    // if(alarmCount >= cp.nRetransmissions) {
+    //     printf("Error sending frame.\n");
+    //     return -1;
+    // }
 
     return 1; // Successful transmission
 }
@@ -284,9 +292,8 @@ int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY 
 // LLREAD
 ////////////////////////////////////////////////
 int llread(unsigned char *packet) // packet has 1000bytes size
-{    
-    // packet = malloc(MAX_FRAME_SIZE);
-
+{
+    
     // the expected sequence number is the sequence number we have currenlty
     int dataSize = decodeInformationFrame(fd, sequenceNumber, packet);
 
@@ -298,22 +305,23 @@ int llread(unsigned char *packet) // packet has 1000bytes size
         Frame rejFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | sequenceNumber << 7); // we reject an information frame with sequence number 
         
         if(write(fd, rejFrame.data, rejFrame.size) == -1) {
-            printf("Error sending RR packet.\n");
+            printf("Error sending Rej packet.\n");
             return -1;
         } else {
-            printf("RR packet sent.\n");
-            sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+            printf("Rej packet sent.\n");// we don't toggle the sequence number
         }
         return -1;
     }
 
+    sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+
     // Create the RR frame, the sequence number we have to send is the one that the i-frame is going to have
-    Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | ((sequenceNumber+1)%2) << 7);
+    Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | (sequenceNumber) << 7);
 
     printf("Decoded packet\n");
     for(unsigned i = 0; i < dataSize; i++){
     	printf("%02X ", packet[i]); // Print each byte in hexadecimal format
-		}
+    }
 
     // Send RR frame
     if(write(fd, rrFrame.data, rrFrame.size) == -1) {
@@ -321,7 +329,6 @@ int llread(unsigned char *packet) // packet has 1000bytes size
         return -1;
     } else {
         printf("RR packet sent.\n");
-        sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
     }
 
     return dataSize; // Return the size of the combined data

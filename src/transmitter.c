@@ -79,7 +79,11 @@ int sendDataPacket(int fileFd){
         	dataPacket[3] = (bytes2send % 256);
         	memcpy(&dataPacket[4], buf, bytes2send);
 
-		if(llwrite(dataPacket, bytes2send+4)){
+		printf("Application layer: sending data packet with %d bytes\n", bytes2send+4);
+		for(unsigned i = 0; i < bytes2send+4; i++){
+			printf("%02X ", dataPacket[i]); // Print each byte in hexadecimal format
+		}
+		if(llwrite(dataPacket, bytes2send+4) == -1){
 			fprintf(stderr, "Error with llwrite in function sendDataPacket\n");
 			return -1;
 		}

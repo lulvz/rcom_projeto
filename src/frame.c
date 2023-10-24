@@ -50,11 +50,13 @@ int destuffIt(unsigned char* buf, int bufSize, unsigned char deStuffedData[MAX_P
 // Creation of Frames
 Frame createInformationFrame(const unsigned char *data, int dataSize, int sequenceNumber, unsigned char addressField) {
 	printf("Inside the createInformationFrame function\n");
+    printf("sequenceNumber in createinformation: %d\n", sequenceNumber);
     Frame frame = {0};
 
     frame.data[0] = FLAG;
     frame.data[1] = addressField;
     frame.data[2] = (sequenceNumber << 6) | 0x00; // 0x00 = I-frame number 0 | 0x40 = I-frame number 1
+    printf("frame.data[2] is %x\n", frame.data[2]);
     frame.data[3] = frame.data[1] ^ frame.data[2]; // BCC1
 
     unsigned char bcc2 = 0;
@@ -110,6 +112,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
     unsigned char tmpData[MAX_PAYLOAD_SIZE+1];
     
     printf("State machine of decodeInformationFrame function\n");
+    printf("sequenceNumber in decodeinformation: %d\n", expectedSequenceNumber);
 
     while(1) {
         switch(rc) {
@@ -139,8 +142,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                 read(fd, recv, 1);
                 printf("Received: %x\n", recv[0]);
                 // check c
-                if(recv[0] == (C_I0 | expectedSequenceNumber << 6) || recv[0] == (C_I1 | expectedSequenceNumber << 6)) {
-                    // Check if the received ACK/NACK corresponds to the expected sequence number.
+                if(recv[0] == (0x00 | (expectedSequenceNumber << 6))) {
                     rc = C_Rcv;
                     ac[1] = recv[0];
                     break;

@@ -24,8 +24,11 @@ int mainReceiver(const char *path){
 
 	while(1){
 		printf("In the beggining\n");
-		unsigned char packet[900];
-		numBytes = llread(packet);
+		unsigned char packet[MAX_PAYLOAD_SIZE];
+		if(numBytes = llread(packet) < 0){
+			fprintf(stderr, "Error receiving packet.\n");
+			return -1;
+		}
 
 		printf("Packet received with %d bytes ", numBytes);
 		for(unsigned i = 0; i < numBytes; i++){
