@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 // The application control packets look like this:
 // | C | T1 | L1 | V1 | T2 | L2 | V2 | ... | Tn | Ln | Vn |
@@ -38,7 +39,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 	
 	mainTransmitter(filename);
 
-   }
+    }
     else if (strcmp(role, "rx") == 0)
     {
         LinkLayer ll = {0};
