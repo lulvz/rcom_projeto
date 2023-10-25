@@ -13,7 +13,7 @@
 
 // Format
 // | C | T1 | L1 | V1 | T2 | L2 | V2 | ... | Tn | Ln | Vn |
-int sendControlPacket(unsigned ctrl, unsigned fileSize, char *fileName);
+int sendControlPacket(unsigned ctrl, unsigned fileSize, const char *fileName);
 
 // Format 
 // | C | L2 | L1 | P1 | P2 | ... | Pn |

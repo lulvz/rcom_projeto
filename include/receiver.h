@@ -15,9 +15,9 @@
 int mainReceiver(const char *path);
 
 
-int handlePacket(unsigned char *packet, int numBytes, char *filename);
+int handlePacket(unsigned char *packet, int numBytes, const char *filename);
 
 
-void parseStartEnd(unsigned char * buffer, int lenght, char* path, int* filesize);
+void parseStartEnd(unsigned char * buffer, int lenght, const char* path, int* filesize);
 
 #endif

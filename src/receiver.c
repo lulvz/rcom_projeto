@@ -13,9 +13,9 @@
 int mainReceiver(const char *path){
 	int ret;
 	int numBytes = 0;
-	char *filename;
+	const char *filename;
 
-	char *temp = path + strlen(path) - 1;
+	const char *temp = path + strlen(path) - 1;
 	while(*temp != '/'){
 		if(temp == path) break;	
 		temp--;
@@ -25,7 +25,7 @@ int mainReceiver(const char *path){
 	while(1){
 		printf("In the beggining\n");
 		unsigned char packet[MAX_PAYLOAD_SIZE];
-		if(numBytes = llread(packet) < 0){
+		if((numBytes = llread(packet)) < 0){
 			fprintf(stderr, "Error receiving packet.\n");
 			return -1;
 		}
@@ -36,9 +36,11 @@ int mainReceiver(const char *path){
 			if(i == numBytes - 1) printf("\n");
 		}
 
-
+		// make copy of filename into filename_cpy
+		char filename_cpy[strlen(filename)];
+		strcpy(filename_cpy, filename);
 		// With the packet in hands, need to handle it
-		if((ret = (handlePacket(packet, numBytes, filename))) < 0){
+		if((ret = (handlePacket(packet, numBytes, filename_cpy))) < 0){
 			printf("Error!!!\n");
 			return -1;
 		}
@@ -53,7 +55,7 @@ int mainReceiver(const char *path){
 }
 
 
-int handlePacket(unsigned char *packet, int numBytes, char *filename){
+int handlePacket(unsigned char *packet, int numBytes, const char *filename){
 	int filesize = 0;
 	char sourceFile[50];
 	// This will be the fd that will represent the file to be written
@@ -101,7 +103,7 @@ int handlePacket(unsigned char *packet, int numBytes, char *filename){
 }
 
 
-void parseStartEnd(unsigned char * buffer, int length, char* path, int* filesize) {
+void parseStartEnd(unsigned char * buffer, int length, const char* path, int* filesize) {
 
     // filesize ---> holds the length of the file that was sent	
     // path ---> holds the name of the file that was sent
@@ -122,7 +124,10 @@ void parseStartEnd(unsigned char * buffer, int length, char* path, int* filesize
                 fileName[j] = buffer[i + j + 1];
             }
             fileName[buffer[i]] = '\0';
-            strcat(path, fileName);
+			//make copy of path
+			char path_cpy[strlen(path)];
+			strcpy(path_cpy, path);
+            strcat(path_cpy, fileName);
             i += buffer[i];
         }
     }

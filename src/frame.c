@@ -118,7 +118,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
         switch(rc) {
             case Start: {
                 read(fd, recv, 1);
-                printf("Received: %x\n", recv[0]);
+                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == FLAG) {
                     rc = Flag_Rcv;
                     break;
@@ -127,7 +127,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             }
             case Flag_Rcv: { 
                 read(fd, recv, 1);
-                printf("Received: %x\n", recv[0]);
+                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == A_FRAME_SENDER) {
                     rc = A_Rcv;
                     ac[0] = A_FRAME_SENDER;
@@ -140,7 +140,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             }
             case A_Rcv: {
                 read(fd, recv, 1);
-                printf("Received: %x\n", recv[0]);
+                // printf("Received: %x\n", recv[0]);
                 // check c
                 if(recv[0] == (0x00 | (expectedSequenceNumber << 6))) {
                     rc = C_Rcv;
@@ -155,7 +155,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             }
             case C_Rcv: {
                 read(fd, recv, 1);
-                printf("Received: %x\n", recv[0]);
+                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == (ac[0] ^ ac[1])) {
                     rc = Bcc_OK;
                     break;
@@ -168,7 +168,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             case Bcc_OK: {
                 // fill data array with data and bcc2
                 read(fd, recv, 1);
-                printf("Received: %x\n", recv[0]);
+                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == FLAG) {
                     rc = Data_Rcv;
                     break;
@@ -208,8 +208,10 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
     unsigned char ac[2] = {0};
     while(1){
         read(fd, recv, 1);
-        printf("Received: %x\n", recv[0]);
+        // printf("Received: %x\n", recv[0]);
         switch(rc) {
+            default:
+                {return FALSE;}
             case Start: {
                 printf("Start\n");
                 if(recv[0] == FLAG) {

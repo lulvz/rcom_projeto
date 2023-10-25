@@ -148,6 +148,7 @@ int llopen(LinkLayer connectionParameters)
 
                     // Send UA packet
                     Frame uaFrame = createControlFrame(A_ANSWER_RECEIVER, C_UA);
+                    // Frame uaFrame = createControlFrame(0x00, C_UA); // just to test
                     if(write(fd, uaFrame.data, uaFrame.size) == -1) {
                         printf("Error sending UA packet.\n");
                         return -1;
@@ -165,22 +166,25 @@ int llopen(LinkLayer connectionParameters)
     return -1;
 }
 
-// returns TRUE if the ack packet was received correctly and is right
+// returns TRUE if it's a rr frame or FALSE if it's a rej frame and -1 if it's an error
 int checkACKResponse(int fd, int expectedSequenceNumber) {
 	printf("In the checkACKResponse function\n");
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
+    int return_value = -1;
     while (1) {
         read(fd, recv, 1);
         printf("Received: %x\n", recv[0]);
         switch (rc) {
+            default:
+                {return FALSE;}
             case Start: {
                 if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
                     break;
                 }
-                return FALSE;
+                return -1;
             }
             case Flag_Rcv: {
                 if (recv[0] == A_ANSWER_RECEIVER) {
@@ -191,40 +195,48 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
                     rc = Flag_Rcv;
                     break;
                 }
-                return FALSE;
+                return -1;
             }
             case A_Rcv: {
                 if (recv[0] == (0x05 | (expectedSequenceNumber << 7))) {
-                    // Check if the received ACK/NACK corresponds to the expected sequence number.
+                    // Check if the received ACK corresponds to the expected sequence number.
                     rc = C_Rcv;
                     ac[1] = recv[0];
                     break;
-                } else if (recv[0] == FLAG) {
+                } else if (recv[0] == (0x01 | ((expectedSequenceNumber+1)%2) << 7)) {
+                    // Check if the received NACK corresponds to the next sequence number.
+                    rc = C_Rcv;
+                    ac[1] = recv[0];
+                    break;
+                }
+                else if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
                     break;
                 }
-                return FALSE;
+                return -1;
             }
             case C_Rcv: {
                 if (recv[0] == (ac[0] ^ ac[1])) {
                     rc = Bcc_OK;
+                    return_value = TRUE;
                     break;
                 } else if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
+                    return_value = FALSE;
                     break;
                 }
-                return FALSE;
+                return -1;
             }
             case Bcc_OK: {
 		printf("In the BCCok\n");
                 if (recv[0] == FLAG) {
-                    return TRUE;
+                    return return_value;
                 }
-                return FALSE;
+                return -1;
             }
         }
     }
-    return FALSE;
+    return -1;
 }
 
 ////////////////////////////////////////////////
@@ -252,12 +264,23 @@ int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY 
     setAlarm(cp.timeout);
 
     // Check for ACK response
-    if (checkACKResponse(fd, (sequenceNumber+1) %2)) {
+    int ack_check = checkACKResponse(fd, (sequenceNumber+1) %2);
+    if (ack_check == TRUE) {
         // ACK received
         removeAlarm();
         lastAckReceived = sequenceNumber;
         sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
         return 1;
+    } else if (ack_check == FALSE) {
+        // NACK received
+        removeAlarm();
+        // we don't toggle the sequence number since the packet was rejected
+        printf("NACK received, packet rejected.\n");
+        return -1;
+    } else {
+        removeAlarm();
+        printf("Error in the ACK/NACK frame.\n");
+        return -1;
     }
 
     // // Wait for ACK
@@ -302,7 +325,7 @@ int llread(unsigned char *packet) // packet has 1000bytes size
         printf("Error decoding frame.\n");
 
         // Send rej packet  
-        Frame rejFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | sequenceNumber << 7); // we reject an information frame with sequence number 
+        Frame rejFrame = createControlFrame(A_ANSWER_RECEIVER, C_REJ0 | sequenceNumber << 7); // we reject an information frame with sequence number 
         
         if(write(fd, rejFrame.data, rejFrame.size) == -1) {
             printf("Error sending Rej packet.\n");

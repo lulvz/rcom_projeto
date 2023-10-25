@@ -31,8 +31,8 @@ int mainTransmitter(const char *path){
     	    return -1;
     	}
 
-	char *fileName;
-	char *temp = path + strlen(path) - 1;
+	const char *fileName;
+	const char *temp = path + strlen(path) - 1;
 	while(*temp != '/'){
 		if(temp == path) break;	
 		temp--;
@@ -94,7 +94,7 @@ int sendDataPacket(int fileFd){
 }
 		
 
-int sendControlPacket(unsigned ctrl, unsigned fileSize, char *fileName){
+int sendControlPacket(unsigned ctrl, unsigned fileSize, const char *fileName){
 	unsigned L1 = sizeof(fileSize);
 	unsigned L2 = strlen(fileName);	
 	// 5 stands for [C, T1, L1, ..., T2, L2 ] 
