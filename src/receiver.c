@@ -25,20 +25,21 @@ int mainReceiver(const char *path){
 	while(1){
 		printf("In the beggining\n");
 		unsigned char packet[MAX_PAYLOAD_SIZE];
-		if((numBytes = llread(packet)) < 0){
+
+		numBytes = llread(packet);
+		if(numBytes == -1){
 			fprintf(stderr, "Error receiving packet.\n");
 			return -1;
+		}else if(numBytes == -2){
+			printf("Receive a duplicate packet, dropping it...\n");
+			continue;
 		}
 
-		printf("Packet received with %d bytes ", numBytes);
-		for(unsigned i = 0; i < numBytes; i++){
-    			printf("%02X ", packet[i]); // Print each byte in hexadecimal format
-			if(i == numBytes - 1) printf("\n");
-		}
+		printf("Packet received with %d bytes\n", numBytes);
 
-		// make copy of filename into filename_cpy
 		char filename_cpy[strlen(filename)];
 		strcpy(filename_cpy, filename);
+
 		// With the packet in hands, need to handle it
 		if((ret = (handlePacket(packet, numBytes, filename_cpy))) < 0){
 			printf("Error!!!\n");
@@ -124,10 +125,11 @@ void parseStartEnd(unsigned char * buffer, int length, const char* path, int* fi
                 fileName[j] = buffer[i + j + 1];
             }
             fileName[buffer[i]] = '\0';
-			//make copy of path
-			char path_cpy[strlen(path)];
-			strcpy(path_cpy, path);
+
+	    char path_cpy[strlen(path)];
+	    strcpy(path_cpy, path);
             strcat(path_cpy, fileName);
+
             i += buffer[i];
         }
     }

@@ -1,5 +1,7 @@
 #include "frame.h"
 
+
+
 // returns the size of the new stuffed data or -1 on error, should take a pointer to an array with size MAX_STUFFED_DATA_SIZE
 int stuffIt(const unsigned char *buf, int bufSize, unsigned char stuffedData[MAX_STUFFED_DATA_SIZE]) {
     int stuffedDataIdx = 0;
@@ -49,14 +51,12 @@ int destuffIt(unsigned char* buf, int bufSize, unsigned char deStuffedData[MAX_P
 
 // Creation of Frames
 Frame createInformationFrame(const unsigned char *data, int dataSize, int sequenceNumber, unsigned char addressField) {
-	printf("Inside the createInformationFrame function\n");
-    printf("sequenceNumber in createinformation: %d\n", sequenceNumber);
     Frame frame = {0};
 
     frame.data[0] = FLAG;
     frame.data[1] = addressField;
     frame.data[2] = (sequenceNumber << 6) | 0x00; // 0x00 = I-frame number 0 | 0x40 = I-frame number 1
-    printf("frame.data[2] is %x\n", frame.data[2]);
+    printf("In createInformationFrame func frame.data[2] is %x\n", frame.data[2]);
     frame.data[3] = frame.data[1] ^ frame.data[2]; // BCC1
 
     unsigned char bcc2 = 0;
@@ -102,6 +102,9 @@ Frame createControlFrame(const unsigned char addressField, unsigned char control
 }
 
 // Decoding the Frames
+// Returns length of the data if everything is correct
+// Returns -1 if the frame was corrupted
+// Returns -2 if the frame is duplicated
 int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *data) {
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
@@ -111,14 +114,11 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
     unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
     unsigned char tmpData[MAX_PAYLOAD_SIZE+1];
     
-    printf("State machine of decodeInformationFrame function\n");
-    printf("sequenceNumber in decodeinformation: %d\n", expectedSequenceNumber);
 
     while(1) {
         switch(rc) {
             case Start: {
                 read(fd, recv, 1);
-                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == FLAG) {
                     rc = Flag_Rcv;
                     break;
@@ -127,7 +127,6 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             }
             case Flag_Rcv: { 
                 read(fd, recv, 1);
-                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == A_FRAME_SENDER) {
                     rc = A_Rcv;
                     ac[0] = A_FRAME_SENDER;
@@ -140,22 +139,19 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             }
             case A_Rcv: {
                 read(fd, recv, 1);
-                // printf("Received: %x\n", recv[0]);
-                // check c
-                if(recv[0] == (0x00 | (expectedSequenceNumber << 6))) {
+                // check c (0x00 | (expectedSequenceNumber << 6))
+		// Simply get the control and pass to next state
+                if(recv[0] == FLAG) {
+		    rc = Flag_Rcv;
+                    break;
+                } else {
                     rc = C_Rcv;
                     ac[1] = recv[0];
                     break;
-                } else if (recv[0] == FLAG) {
-                    rc = Flag_Rcv;
-                    break;
                 }
-                printf("Wrong sequence number\n");
-                return -1;
             }
             case C_Rcv: {
                 read(fd, recv, 1);
-                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == (ac[0] ^ ac[1])) {
                     rc = Bcc_OK;
                     break;
@@ -168,7 +164,6 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
             case Bcc_OK: {
                 // fill data array with data and bcc2
                 read(fd, recv, 1);
-                // printf("Received: %x\n", recv[0]);
                 if(recv[0] == FLAG) {
                     rc = Data_Rcv;
                     break;
@@ -180,7 +175,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                 return -1;
             }
             case Data_Rcv: {
-                // if flag was found on BCC_OK, the byte before the flag is bcc2 which is xor of all the databytes
+                // if flafg was found on BCC_OK, the byte before the flag is bcc2 which is xor of all the databytes
                 dataSize = destuffIt(stuffedData, stuffedDataSize, tmpData);
 
                 // calculate xor of data bytes (except bcc2)
@@ -188,11 +183,19 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
                 for(int i = 0; i < (dataSize-1); i++) {
                     dataXor ^= tmpData[i];
                 }
+		
+		int sqnIsOk = (ac[1] == (0x00|(expectedSequenceNumber << 6)));
 
-                if(dataXor == tmpData[dataSize-1]) {
-                    printf("BCC2 OK\n");
+		// Case that everythin is ok, so return the length
+		if(dataXor == tmpData[dataSize-1] && sqnIsOk){
                     memcpy(data, tmpData, dataSize-1); // copy all except bcc2
-                    return dataSize-1;
+		    return dataSize - 1;
+		}
+		else if(dataXor == tmpData[dataSize-1]) {
+		    /*If everything is okay, except the sequnce number 
+		     probably the packet is duplicate, so just send the 
+		     RR again*/
+                    return -2;
                 } else {
                     return -1;
                 }
@@ -208,10 +211,8 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
     unsigned char ac[2] = {0};
     while(1){
         read(fd, recv, 1);
-        // printf("Received: %x\n", recv[0]);
+        printf("Received: %x\n", recv[0]);
         switch(rc) {
-            default:
-                {return FALSE;}
             case Start: {
                 printf("Start\n");
                 if(recv[0] == FLAG) {
@@ -262,6 +263,9 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
                 }
                 return FALSE;
             }
+	    // Just added to stop the warnings, it not possible to reach it
+	    case Data_Rcv :
+			return FALSE; 
         }
     }
     return FALSE;

@@ -80,9 +80,7 @@ int sendDataPacket(int fileFd){
         	memcpy(&dataPacket[4], buf, bytes2send);
 
 		printf("Application layer: sending data packet with %d bytes\n", bytes2send+4);
-		for(unsigned i = 0; i < bytes2send+4; i++){
-			printf("%02X ", dataPacket[i]); // Print each byte in hexadecimal format
-		}
+
 		if(llwrite(dataPacket, bytes2send+4) == -1){
 			fprintf(stderr, "Error with llwrite in function sendDataPacket\n");
 			return -1;
@@ -101,10 +99,6 @@ int sendControlPacket(unsigned ctrl, unsigned fileSize, const char *fileName){
 	// C = control; T = Type(size or name of the file); L = size
 	unsigned packetSize = 5 + L1 + L2;
 
-	printf("L1 %u\n", L1);
-	printf("L2 %u\n", L2);
-	printf("packetSize %u\n", packetSize);
-
 	unsigned char packet[packetSize];
 	packet[0] = ctrl;
 
@@ -119,10 +113,12 @@ int sendControlPacket(unsigned ctrl, unsigned fileSize, const char *fileName){
 	for(unsigned i = 0; i < L2; i++){
 		packet[5 + L1 + i] = fileName[i];
 	}
-
+	
+	printf("Sent PACKET with size : %d\n", packetSize);
 	for (unsigned i = 0; i < packetSize; i++) {
     		printf("%02X ", packet[i]); // Print each byte in hexadecimal format
 	}
+	printf("\n");
 
 
 	return llwrite(packet, packetSize);

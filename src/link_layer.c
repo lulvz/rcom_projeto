@@ -31,7 +31,7 @@ static volatile int lastAckReceived = -1; // Last acknowledged sequence number
 
 
 // alarm setter function
-void setAlarm(int seconds) {
+void setAlarm() {
     alarm(3); // Set the initial alarm for 3 seconds
     alarmEnabled = TRUE;
 }
@@ -42,7 +42,7 @@ void removeAlarm() {
     alarmCount = 0;
 }
 
-void alarmHandler(int signal) {
+void alarmHandler() {
     alarmEnabled = FALSE;
     alarmCount++;
 }
@@ -97,20 +97,17 @@ int llopen(LinkLayer connectionParameters)
 
     if(cp.role == LlTx) {
         Frame setFrame = createControlFrame(A_FRAME_SENDER, C_SET);
-        if(write(fd, setFrame.data, setFrame.size) == -1) {
-            printf("Error sending SET packet.\n");
-            return -1;
-        } else {
-            printf("SET packet sent.\n");
-        }
+
+	if(write(fd, setFrame.data, setFrame.size) == -1)
+		return -1;
 
         // set alarm handler
         (void)signal(SIGALRM, alarmHandler);
         // set alarm
-        setAlarm(cp.timeout);
+        setAlarm();
 
-        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA)) {
-            printf("Received correct UA packet from receiver.\n");
+        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA) == 1) {
+            printf("Received UA FRAME from receiver\n");
             removeAlarm();
             return 1;
         }
@@ -123,62 +120,66 @@ int llopen(LinkLayer connectionParameters)
                 // Send SET packet
                 Frame setFrame = createControlFrame(A_FRAME_SENDER, C_SET);
                 if(write(fd, setFrame.data, setFrame.size) == -1) {
-                    printf("Error sending SET packet.\n");
+                    printf("ERROR : sending SET frame exiting...\n");
                     return -1;
                 } else {
-                    printf("SET packet sent.\n");
+                    printf("SET FRAME RE-sent.\n");
                 }
 
                 if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA)) {
-                    printf("Received correct UA packet from receiver.\n");
+                    printf("Received UA frame from receiver.\n");
                     removeAlarm();
                     return 1;
                 }
-
-                // Set the alarm again for the next attempt
-                setAlarm(cp.timeout);
+		setAlarm();
             }
-        }
+	}
+	printf("Could not send SET frame to the receiver!\n");
+        printf("Reached the maximum of tentatives %d\n", alarmCount);
+
+	return -1;
+
     } else if(cp.role == LlRx) {
         while(alarmCount < cp.nRetransmissions) {
-            if(!alarmEnabled) {
                 if(checkControlFrame(fd, A_FRAME_SENDER, C_SET)) {
-                    printf("Received correct SET packet from sender.\n");
+                    printf("Received correct SET FRAME from sender.\n");
                     removeAlarm();
 
                     // Send UA packet
                     Frame uaFrame = createControlFrame(A_ANSWER_RECEIVER, C_UA);
-                    // Frame uaFrame = createControlFrame(0x00, C_UA); // just to test
                     if(write(fd, uaFrame.data, uaFrame.size) == -1) {
-                        printf("Error sending UA packet.\n");
+                        printf("ERROR : sending UA frame exiting...\n");
                         return -1;
                     } else {
-                        printf("UA packet sent.\n");
+                        printf("UA FRAME sent.\n");
                         return 1;
                     }
                 }
-                
-                // Set the alarm again for the next attempt
-                setAlarm(cp.timeout);
-            }
+
+		if(!alarmEnabled){
+		       	setAlarm();
+			printf("Ola\n");
+		}
+            
         }
+	printf("ERROR : receiver didn't got SET frame\n");	
+	printf("Reached maximum tentatives : %d\n", alarmCount);
     }
     return -1;
 }
 
-// returns TRUE if it's a rr frame or FALSE if it's a rej frame and -1 if it's an error
+// Returns 1 if the ACK was sent correctly
+// Returns -1 if the ACK was corrupted
+// Returns 2 received a REJ
 int checkACKResponse(int fd, int expectedSequenceNumber) {
-	printf("In the checkACKResponse function\n");
+    printf("In the checkACKResponse function\n");
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
-    int return_value = -1;
     while (1) {
         read(fd, recv, 1);
         printf("Received: %x\n", recv[0]);
         switch (rc) {
-            default:
-                {return FALSE;}
             case Start: {
                 if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
@@ -199,17 +200,16 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
             }
             case A_Rcv: {
                 if (recv[0] == (0x05 | (expectedSequenceNumber << 7))) {
-                    // Check if the received ACK corresponds to the expected sequence number.
+                    // Check if the received ACK/NACK corresponds to the expected sequence number.
                     rc = C_Rcv;
                     ac[1] = recv[0];
                     break;
-                } else if (recv[0] == (0x01 | ((expectedSequenceNumber+1)%2) << 7)) {
-                    // Check if the received NACK corresponds to the next sequence number.
-                    rc = C_Rcv;
-                    ac[1] = recv[0];
-                    break;
-                }
-                else if (recv[0] == FLAG) {
+                } 
+		else if(recv[0] == 0x81){
+			//Check if receive a REJ
+			return 2;
+		}
+		else if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
                     break;
                 }
@@ -218,11 +218,9 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
             case C_Rcv: {
                 if (recv[0] == (ac[0] ^ ac[1])) {
                     rc = Bcc_OK;
-                    return_value = TRUE;
                     break;
                 } else if (recv[0] == FLAG) {
                     rc = Flag_Rcv;
-                    return_value = FALSE;
                     break;
                 }
                 return -1;
@@ -230,10 +228,13 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
             case Bcc_OK: {
 		printf("In the BCCok\n");
                 if (recv[0] == FLAG) {
-                    return return_value;
+                    return 1;
                 }
                 return -1;
             }
+	   // Just added to stop the warnings, it not possible to reach that case
+	   case Data_Rcv : 
+		return -1;
         }
     }
     return -1;
@@ -244,7 +245,6 @@ int checkACKResponse(int fd, int expectedSequenceNumber) {
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY ONE PACKET FROM THE APPLICATION WITH THE MAXIMUM SIZE OF 1000 BYTES
 {
-	printf("Inside the llwrite function\n");
     if(bufSize > MAX_PAYLOAD_SIZE) {
         printf("Error: bufSize is bigger than the maximum payload size.\n");
         return -1;
@@ -252,63 +252,47 @@ int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY 
     // Create the I-frame
     Frame frame = createInformationFrame(buf, bufSize, sequenceNumber, A_FRAME_SENDER);
 
-    printf("Created information frame\n");
-	for(unsigned i = 0; i < frame.size; i++){
-        printf("%02X ", frame.data[i]); // Print each byte in hexadecimal format
-	}
     
     // Send frame
     write(fd, frame.data, frame.size);
 
-    // Set alarm
-    setAlarm(cp.timeout);
+    setAlarm();
 
     // Check for ACK response
-    int ack_check = checkACKResponse(fd, (sequenceNumber+1) %2);
-    if (ack_check == TRUE) {
+    if (checkACKResponse(fd, (sequenceNumber+1) %2) == 1) {
         // ACK received
         removeAlarm();
         lastAckReceived = sequenceNumber;
-        sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
+        sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sqcN
         return 1;
-    } else if (ack_check == FALSE) {
-        // NACK received
-        removeAlarm();
-        // we don't toggle the sequence number since the packet was rejected
-        printf("NACK received, packet rejected.\n");
-        return -1;
-    } else {
-        removeAlarm();
-        printf("Error in the ACK/NACK frame.\n");
-        return -1;
     }
 
-    // // Wait for ACK
-    // while (alarmCount < cp.nRetransmissions) {
-    //     if (!alarmEnabled) {
-    //         // Handle retransmission
-    //         printf("Alarm #%d: Resending the packet.\n", alarmCount);
-    //         write(fd, frame.data, frame.size);
+    /*
+     *Probably exists the case that the receiver sends the ACK, meaning that 
+     it alredy 
+     */
+    // Case the ACK response was invalid or it was a REJ
+     while (alarmCount < cp.nRetransmissions) {
+         if (alarmEnabled) {
+             // Handle retransmission
+             printf("Alarm #%d: Resending the packet.\n", alarmCount);
+             write(fd, frame.data, frame.size);
 
-    //         // Set the alarm again for the next attempt
-    //         setAlarm(cp.timeout);
+             // Check for ACK response
+             if (checkACKResponse(fd, sequenceNumber) == 1) {
+                 removeAlarm();
+                 lastAckReceived = sequenceNumber;
+                 sequenceNumber = (sequenceNumber + 1) % 2;// Toggle sqcN
+                 return 1;
+             }
+         }
+	 else {
+		 setAlarm();
+	 }
+     }
 
-    //         // Check for ACK response
-    //         if (checkACKResponse(fd, sequenceNumber)) {
-    //             // ACK received
-    //             removeAlarm();
-    //             lastAckReceived = sequenceNumber;
-    //             sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
-    //             break; // Move to the next frame
-    //         }
-    //     }
-    // }
-    // if(alarmCount >= cp.nRetransmissions) {
-    //     printf("Error sending frame.\n");
-    //     return -1;
-    // }
-
-    return 1; // Successful transmission
+    // Could not receive the correct ACK response
+    return -1; 
 }
 
 ////////////////////////////////////////////////
@@ -320,41 +304,48 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     // the expected sequence number is the sequence number we have currenlty
     int dataSize = decodeInformationFrame(fd, sequenceNumber, packet);
 
+    // If the frame is corrupted, send a REJ 
     if (dataSize == -1) {
-        // Error decoding frame
-        printf("Error decoding frame.\n");
+        printf("Frame corrupted!!!\n");
 
         // Send rej packet  
         Frame rejFrame = createControlFrame(A_ANSWER_RECEIVER, C_REJ0 | sequenceNumber << 7); // we reject an information frame with sequence number 
         
-        if(write(fd, rejFrame.data, rejFrame.size) == -1) {
-            printf("Error sending Rej packet.\n");
-            return -1;
-        } else {
-            printf("Rej packet sent.\n");// we don't toggle the sequence number
-        }
+	// Try 3 times to send the REJ frame
+	for(int i = 0; i < 3; i++){
+		if(write(fd, rejFrame.data, rejFrame.size) != -1) return 1;
+	        printf("Attempt #%d to send REJ FRAME\n", i);
+	}
+	
+	// Case failded to send the REJ frame	
         return -1;
-    }
+    } else if(dataSize == -2){
+	    printf("Frame duplicated! Send RR and drop it...\n");
+	    Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | (sequenceNumber) << 7);
+
+	    /*Try 3 times, the -2 return will be for the application layer
+	     to understand that the packet is a duplicated one, and wait for
+	     the next*/
+	    for(int i = 0; i < 3; i++){
+		    if(write(fd, rrFrame.data, rrFrame.size) != -1) return -2;
+	            printf("Attempt #%d to send RR FRAME\n", i);
+	    }
+	    return -1;
+	}
 
     sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
 
-    // Create the RR frame, the sequence number we have to send is the one that the i-frame is going to have
+    // This is already creating correctly the RR0 and RR1
     Frame rrFrame = createControlFrame(A_ANSWER_RECEIVER, C_RR0 | (sequenceNumber) << 7);
 
-    printf("Decoded packet\n");
-    for(unsigned i = 0; i < dataSize; i++){
-    	printf("%02X ", packet[i]); // Print each byte in hexadecimal format
+    // Try 3 times to send the RR FRAME
+    for(int i = 0; i < 3; i++){
+	if(write(fd, rrFrame.data, rrFrame.size) != -1) return dataSize;
+	printf("Attempt #%d to send RR FRAME\n", i);
     }
 
-    // Send RR frame
-    if(write(fd, rrFrame.data, rrFrame.size) == -1) {
-        printf("Error sending RR packet.\n");
-        return -1;
-    } else {
-        printf("RR packet sent.\n");
-    }
+    return -1;
 
-    return dataSize; // Return the size of the combined data
 }
 
 // return 1 if the connection was terminated correctly or -1 if not
