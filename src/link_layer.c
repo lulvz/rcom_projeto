@@ -12,13 +12,16 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <stdlib.h>
+// include usleep
+#include <unistd.h>
 
 // Global variables
 volatile int STOP = FALSE;
 unsigned int alarmCount = 0;
 int alarmEnabled = FALSE;
 int fd;
-LinkLayer cp;
+LinkLayer cp = {0};
 struct termios oldtio;
 struct termios newtio;
 
@@ -36,10 +39,14 @@ void alarmHandler() {
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
-    cp = connectionParameters;
+    cp.baudRate = connectionParameters.baudRate;
+    cp.timeout = connectionParameters.timeout;
+    cp.nRetransmissions = connectionParameters.nRetransmissions;
+    cp.role = connectionParameters.role;
+    strcpy(cp.serialPort, connectionParameters.serialPort);
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
-    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+    fd = open(cp.serialPort, O_RDWR | O_NOCTTY);
 
     if (fd < 0) {
         perror("Error opening tty");
@@ -93,6 +100,7 @@ int llopen(LinkLayer connectionParameters)
             alarmEnabled = TRUE;
 
             while(alarmEnabled) {
+                
                 ssize_t recvSize = read(fd, recv, 1);
                 if(recvSize > 0) {
                     switch(rc) {
