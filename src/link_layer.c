@@ -157,9 +157,9 @@ int llopen(LinkLayer connectionParameters)
             }
         }
     } else if(cp.role == LlRx) {
+        enum CheckRecv rc = Start;
+        unsigned char recv[1] = {0};
         while(1) {
-            enum CheckRecv rc = Start;
-            unsigned char recv[1] = {0};
             ssize_t recvSize = read(fd, recv, 1);
             if(recvSize > 0) {
                 switch(rc) {
