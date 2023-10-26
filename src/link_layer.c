@@ -109,7 +109,7 @@ int llopen(LinkLayer connectionParameters)
         // set alarm
         setAlarm(cp.timeout);
 
-        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA, cp)) {
+        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA)) {
             printf("Received correct UA packet from receiver.\n");
             removeAlarm();
             return 1;
@@ -389,7 +389,7 @@ int llclose(int showStatistics)
             printf("DISC packet sent.\n");
         }
         // Wait for DISC frame
-        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_DISC, cp)) {
+        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_DISC)) {
             printf("Received correct DISC packet from receiver.\n");
         } else {
             printf("Error receiving DISC packet from receiver.\n");
@@ -406,7 +406,7 @@ int llclose(int showStatistics)
         }
     } else if(cp.role == LlRx) {
         // Wait for DISC frame, send DISC frame, and finally waits for an UA frame
-        if(checkControlFrame(fd, A_FRAME_SENDER, C_DISC, cp)) {
+        if(checkControlFrame(fd, A_FRAME_SENDER, C_DISC)) {
             printf("Received correct DISC packet from sender.\n");
             // Send DISC frame
             Frame discFrame = createControlFrame(A_ANSWER_RECEIVER, C_DISC);
@@ -421,7 +421,7 @@ int llclose(int showStatistics)
            terminate_connection(fd); 
         }
         // Wait for UA frame
-        if(checkControlFrame(fd, A_ANSWER_SENDER, C_UA, cp)) {
+        if(checkControlFrame(fd, A_ANSWER_SENDER, C_UA)) {
             printf("Received correct UA packet from sender, terminating connection.\n");
         } else {
             printf("Error receiving UA packet from sender.\n");
@@ -658,7 +658,7 @@ int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *da
 }
 
 // returns TRUE if the defined control frame was received correctly
-int checkControlFrame(int fd, unsigned char addressField, unsigned char controlField, LinkLayer cp) {
+int checkControlFrame(int fd, unsigned char addressField, unsigned char controlField) {
     enum CheckRecv rc = Start;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
