@@ -29,8 +29,6 @@
 #define TRUE 1
 #define FALSE 0
 
-
-// States of the Frame's
 enum CheckRecv {
     Start,
     Flag_Rcv,

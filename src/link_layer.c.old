@@ -14,32 +14,49 @@
 #include <string.h>
 
 // Global variables
-volatile int STOP = FALSE;
+volatile int STOP;
+
 unsigned int alarmCount = 0;
 int alarmEnabled = FALSE;
 int fd;
+
+unsigned char buf[MAX_FRAME_SIZE] = {0};
+
 LinkLayer cp;
 struct termios oldtio;
 struct termios newtio;
+
 
 static volatile int sequenceNumber = 0;  // Initial sequence number
 static volatile int lastAckReceived = -1; // Last acknowledged sequence number
 
 
-void alarmHandler() {
-    alarmCount++;
+// alarm setter function
+void setAlarm() {
+    alarm(3); // Set the initial alarm for 3 seconds
+    alarmEnabled = TRUE;
+}
+
+void removeAlarm() {
     alarmEnabled = FALSE;
+    alarm(0);
+    alarmCount = 0;
+}
+
+void alarmHandler() {
+    alarmEnabled = FALSE;
+    alarmCount++;
 }
 
 ////////////////////////////////////////////////
-// LLOPEN
+// LLOPEN (completed) sort of
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
     cp = connectionParameters;
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
-    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+    fd = open(cp.serialPort, O_RDWR | O_NOCTTY);
 
     if (fd < 0) {
         perror("Error opening tty");
@@ -63,7 +80,7 @@ int llopen(LinkLayer connectionParameters)
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // KEEP AT 0 OMFG IM GOING CRAZY
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // Now clean the line and activate the settings for the port
     tcflush(fd, TCIOFLUSH);
@@ -76,141 +93,74 @@ int llopen(LinkLayer connectionParameters)
     }
 
     if(cp.role == LlTx) {
-        (void)signal(SIGALRM, alarmHandler); // set alarm only for sender
-        enum CheckRecv rc = Start;
-        unsigned char recv[1] = {0};
+        Frame setFrame = createControlFrame(A_FRAME_SENDER, C_SET);
 
+	if(write(fd, setFrame.data, setFrame.size) == -1)
+		return -1;
+
+        // set alarm handler
+        (void)signal(SIGALRM, alarmHandler);
+        // set alarm
+        setAlarm();
+
+        if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA) == 1) {
+            printf("Received UA FRAME from receiver\n");
+            removeAlarm();
+            return 1;
+        }
+
+        // send SET packet and wait for UA response nRetransmissions times
         while(alarmCount < cp.nRetransmissions) {
-            // build and send packet 
-            Frame setPacket = createControlFrame(A_FRAME_SENDER, C_SET);
-            if(write(fd, setPacket.data, setPacket.size) == -1) {
-                printf("Error writing SET packet.\n");
-                return -1;
-            } else {
-                printf("SET packet sent.\n");
-            }
-            alarm(cp.timeout);
-            alarmEnabled = TRUE;
+            if(!alarmEnabled) {
+                printf("Alarm #%d: Resending the packet.\n", alarmCount);
 
-            while(alarmEnabled) {
-                ssize_t recvSize = read(fd, recv, 1);
-                if(recvSize > 0) {
-                    switch(rc) {
-                        default: break;
-                        case Start: {
-                            if(recv[0] == FLAG) {
-                                rc = Flag_Rcv;
-                            }
-                            break;
-                        }
-                        case Flag_Rcv: {
-                            if(recv[0] == A_ANSWER_SENDER) {
-                                rc = A_Rcv;
-                            } else if (recv[0] == FLAG) {
-                                rc = Flag_Rcv;
-                            } else {
-                                rc = Start;
-                            }
-                            break;
-                        }
-                        case A_Rcv: {
-                            if(recv[0] == C_UA) {
-                                rc = C_Rcv;
-                            } else if (recv[0] == FLAG) {
-                                rc = Flag_Rcv;
-                            } else {
-                                rc = Start;
-                            }
-                            break;
-                        }
-                        case C_Rcv: {
-                            if(recv[0] == (A_ANSWER_SENDER ^ C_UA)) {
-                                rc = Bcc_OK;
-                            } else if (recv[0] == FLAG) {
-                                rc = Flag_Rcv;
-                            } else {
-                                rc = Start;
-                            }
-                            break;
-                        }
-                        case Bcc_OK: {
-                            if(recv[0] == FLAG) {
-                                printf("UA packet received, connection established.\n");
-                                alarm(0);
-                                alarmEnabled = FALSE;
-                                return 1;
-                            } else {
-                                rc = Start;
-                            }
-                            break;
-                        }
-                    }
+                // Send SET packet
+                Frame setFrame = createControlFrame(A_FRAME_SENDER, C_SET);
+                if(write(fd, setFrame.data, setFrame.size) == -1) {
+                    printf("ERROR : sending SET frame exiting...\n");
+                    return -1;
+                } else {
+                    printf("SET FRAME RE-sent.\n");
                 }
+
+                if(checkControlFrame(fd, A_ANSWER_RECEIVER, C_UA)) {
+                    printf("Received UA frame from receiver.\n");
+                    removeAlarm();
+                    return 1;
+                }
+		setAlarm();
             }
-        }
+	}
+	printf("Could not send SET frame to the receiver!\n");
+        printf("Reached the maximum of tentatives %d\n", alarmCount);
+
+	return -1;
+
     } else if(cp.role == LlRx) {
-        while(1) {
-            enum CheckRecv rc = Start;
-            unsigned char recv[1] = {0};
-            ssize_t recvSize = read(fd, recv, 1);
-            if(recvSize > 0) {
-                switch(rc) {
-                    default: break;
-                    case Start: {
-                        if(recv[0] == FLAG) {
-                            rc = Flag_Rcv;
-                        }
-                        break;
-                    }
-                    case Flag_Rcv: {
-                        if(recv[0] == A_FRAME_SENDER) {
-                            rc = A_Rcv;
-                        } else if (recv[0] == FLAG) {
-                            rc = Flag_Rcv;
-                        } else {
-                            rc = Start;
-                        }
-                        break;
-                    }
-                    case A_Rcv: {
-                        if(recv[0] == C_SET) {
-                            rc = C_Rcv;
-                        } else if (recv[0] == FLAG) {
-                            rc = Flag_Rcv;
-                        } else {
-                            rc = Start;
-                        }
-                        break;
-                    }
-                    case C_Rcv: {
-                        if(recv[0] == (A_FRAME_SENDER ^ C_SET)) {
-                            rc = Bcc_OK;
-                        } else if (recv[0] == FLAG) {
-                            rc = Flag_Rcv;
-                        } else {
-                            rc = Start;
-                        }
-                        break;
-                    }
-                    case Bcc_OK: {
-                        if(recv[0] == FLAG) {
-                            printf("SET packet received, sending UA packet.\n");
-                            Frame uaPacket = createControlFrame(A_ANSWER_SENDER, C_UA);
-                            if(write(fd, uaPacket.data, uaPacket.size) == -1) {
-                                printf("Error writing UA packet.\n");
-                                return -1;
-                            } else {
-                                printf("UA packet sent, connection established.\n");
-                                return 1;
-                            }
-                        } else {
-                            rc = Start;
-                        }
-                        break;
+        while(alarmCount < cp.nRetransmissions) {
+                if(checkControlFrame(fd, A_FRAME_SENDER, C_SET)) {
+                    printf("Received correct SET FRAME from sender.\n");
+                    removeAlarm();
+
+                    // Send UA packet
+                    Frame uaFrame = createControlFrame(A_ANSWER_RECEIVER, C_UA);
+                    if(write(fd, uaFrame.data, uaFrame.size) == -1) {
+                        printf("ERROR : sending UA frame exiting...\n");
+                        return -1;
+                    } else {
+                        printf("UA FRAME sent.\n");
+                        return 1;
                     }
                 }
-            }
+
+		if(!alarmEnabled){
+		       	setAlarm();
+			printf("Ola\n");
+		}
+            
         }
+	printf("ERROR : receiver didn't got SET frame\n");	
+	printf("Reached maximum tentatives : %d\n", alarmCount);
     }
     return -1;
 }
@@ -473,13 +423,12 @@ int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY 
     // Send frame
     write(fd, frame.data, frame.size);
 
-
+    setAlarm();
 
     // Check for ACK response
     if (checkACKResponse(fd, (sequenceNumber+1) %2) == 1) {
         // ACK received
-        alarm(0);
-        alarmEnabled = FALSE;
+        removeAlarm();
         lastAckReceived = sequenceNumber;
         sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sqcN
         return 1;
@@ -498,16 +447,14 @@ int llwrite(const unsigned char *buf, int bufSize) // TODO: MAKE THIS SEND ONLY 
 
              // Check for ACK response
              if (checkACKResponse(fd, sequenceNumber) == 1) {
-                 alarm(0);
-                 alarmEnabled = FALSE;
+                 removeAlarm();
                  lastAckReceived = sequenceNumber;
                  sequenceNumber = (sequenceNumber + 1) % 2;// Toggle sqcN
                  return 1;
              }
          }
 	 else {
-		alarm(cp.timeout);
-        alarmEnabled = TRUE;
+		 setAlarm();
 	 }
      }
 
@@ -570,7 +517,7 @@ int llread(unsigned char *packet) // packet has 1000bytes size
 
 // return 1 if the connection was terminated correctly or -1 if not
 int terminate_connection(int fd) {
-    if(tcsetattr(fd, TCSANOW, &oldtio) == -1) {
+    if(tcsetattr(fd, TCSANOW, &oldtioSave) == -1) {
         perror("tcsetattr");
         close(fd);
         return -1;
