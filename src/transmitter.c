@@ -81,6 +81,7 @@ int sendDataPacket(int fileFd){
 
 		printf("Application layer: sending data packet with %d bytes\n", bytes2send+4);
 
+		sleep(1);
 		if(llwrite(dataPacket, bytes2send+4) == -1){
 			fprintf(stderr, "Error with llwrite in function sendDataPacket\n");
 			return -1;

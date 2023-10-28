@@ -36,6 +36,7 @@ enum CheckRecv {
     C_Rcv,
     Bcc_OK,
     Data_Rcv,
+    Stop,
 };
 		
 #endif

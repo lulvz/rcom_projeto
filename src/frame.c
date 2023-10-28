@@ -25,7 +25,7 @@ int stuffIt(const unsigned char *buf, int bufSize, unsigned char stuffedData[MAX
     return stuffedDataIdx;
 }
 
-// returns the size of the de-stuffed data, this should be a pointer to an array with size MAX_PAYLOAD_SIZE
+// returns the size of the de-stuffed data, this should be a pointer to an array with size MAX_PAYLOAD_SIZE+1 for the bcc2
 int destuffIt(unsigned char* buf, int bufSize, unsigned char deStuffedData[MAX_PAYLOAD_SIZE+1]) {
     int deStuffedDataIdx = 0;
 
