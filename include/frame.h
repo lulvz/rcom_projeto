@@ -37,6 +37,6 @@ Frame createControlFrame(const unsigned char addressField, unsigned char control
 // Decoding the Frames
 int decodeInformationFrame(int fd, int expectedSequenceNumber, unsigned char *data);
 
-int checkControlFrame(int fd, unsigned char addressField, unsigned char controlField);
+unsigned char checkControlFrame(int fd, unsigned char addressField);
 
 #endif 

@@ -30,8 +30,8 @@ int mainReceiver(const char *path){
 		if(numBytes == -1){
 			fprintf(stderr, "Error receiving packet.\n");
 			return -1;
-		}else if(numBytes == -2){
-			printf("Receive a duplicate packet, dropping it...\n");
+		} else if (numBytes == 0) {
+			printf("Closing connection\n");
 			continue;
 		}
 
@@ -91,7 +91,6 @@ int handlePacket(unsigned char *packet, int numBytes, const char *filename){
 				perror("Error closing the file in handlePacket\n");
 				return -1;
 			}
-			//He checks the size of the file here...
 			return END;}	
 		
 		default :

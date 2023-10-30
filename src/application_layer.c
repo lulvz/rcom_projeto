@@ -37,7 +37,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 	
 	mainTransmitter(filename);
-
    }
     else if (strcmp(role, "rx") == 0)
     {

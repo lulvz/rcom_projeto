@@ -396,14 +396,15 @@ int checkACKResponse(int fd, int expectedSequenceNumber)
     return ret;
 }
 
-// returns TRUE if the defined control frame was received correctly
-int checkControlFrame(int fd, unsigned char addressField, unsigned char controlField)
+// returns the control field of the control frame if it was received correctly
+// returns 0 if the control frame was corrupted
+unsigned char checkControlFrame(int fd, unsigned char addressField)
 {
     printf("In the checkControlFrame function\n");
     enum CheckRecv rc = Start;
-    int ret = 0;
     unsigned char recv[1] = {0};
     unsigned char ac[2] = {0};
+    unsigned char controlField = 0;
 
     while (alarmEnabled && (rc != Stop))
     {
@@ -442,10 +443,10 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
             }
             case A_Rcv:
             {
-                if (recv[0] == controlField)
+                if ((recv[0] == C_SET) || (recv[0] == C_UA) || (recv[0] == C_DISC) || (recv[0] == C_RR0) || (recv[0] == C_RR1) || (recv[0] == C_REJ0) || (recv[0] == C_REJ1))
                 {
                     rc = C_Rcv;
-                    ret = TRUE;
+                    controlField = recv[0];
                     ac[1] = recv[0];
                 }
                 else if (recv[0] == FLAG)
@@ -479,7 +480,6 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
                 if (recv[0] == FLAG)
                 {
                     rc = Stop;
-                    ret = TRUE;
                 }
                 else
                 {
@@ -490,7 +490,7 @@ int checkControlFrame(int fd, unsigned char addressField, unsigned char controlF
             }
         }
     }
-    return ret;
+    return controlField;
 }
 
 ////////////////////////////////////////////////
@@ -518,8 +518,8 @@ int llwrite(const unsigned char *buf, int bufSize)
 
         while (alarmEnabled)
         {
-            int r = checkACKResponse(fd, ((sequenceNumber+1)%2)); // todo: probably implement state machine inside this function
-            if (r == TRUE)
+            unsigned char r = checkControlFrame(fd, A_ANSWER_RECEIVER); // todo: probably implement state machine inside this function
+            if ((r == C_RR0) || (r == C_RR1))
             {
                 printf("ACK packet received.\n");
                 alarm(0);
@@ -528,7 +528,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 sequenceNumber = (sequenceNumber + 1) % 2; // Toggle sequence number
                 return frame.size;
             }
-            else if (r == FALSE)
+            else if ((r == C_REJ0) || (r == C_REJ1))
             {
                 alarm(0);
                 alarmEnabled = FALSE;
@@ -537,11 +537,27 @@ int llwrite(const unsigned char *buf, int bufSize)
             else
             {
                 printf("The ack packet was corrupted.\n");
+                printf("Control field: %x\n", r);
+                alarm(0);
+                alarmEnabled = FALSE;
                 break;
             }
         }
     }
     return -1;
+}
+
+// return 1 if the connection was terminated correctly or -1 if not
+int terminate_connection(int fd)
+{
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+    {
+        perror("tcsetattr");
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 1;
 }
 
 ////////////////////////////////////////////////
@@ -585,6 +601,21 @@ int llread(unsigned char *packet) // packet has 1000bytes size
                 {
                     rc = Flag_Rcv;
                 }
+                else if ((recv[0] == C_DISC)) {
+                    printf("Got disc frame\n");
+                    Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_DISC);
+                    if (write(fd, uaPacket.data, uaPacket.size) == -1)
+                    {
+                        printf("Error writing UA packet.\n");
+                        return -1;
+                    }
+                    else
+                    {
+                        printf("UA packet sent.\n");
+                    }
+                    terminate_connection(fd);
+                    return 0; // return 0 to indicate that the connection was terminated
+                }
                 else
                 {
                     rc = Start;
@@ -607,6 +638,18 @@ int llread(unsigned char *packet) // packet has 1000bytes size
                 else if (recv[0] == C_DISC)
                 {
                     printf("Got disc frame\n");
+                    Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_UA);
+                    if (write(fd, uaPacket.data, uaPacket.size) == -1)
+                    {
+                        printf("Error writing UA packet.\n");
+                        return -1;
+                    }
+                    else
+                    {
+                        printf("UA packet sent.\n");
+                    }
+                    terminate_connection(fd);
+                    return -1;
                 }
                 else
                 {
@@ -691,94 +734,162 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     return -1;
 }
 
-// return 1 if the connection was terminated correctly or -1 if not
-int terminate_connection(int fd)
-{
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
-    {
-        perror("tcsetattr");
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    return 1;
-}
-
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
-    if (cp.role == LlTx)
-    {
-        // Send DISC frame if we are the sender, waits for another DISC frame, and finally sends an UA frame
-        // Send DISC frame
-        Frame discFrame = createControlFrame(A_FRAME_SENDER, C_DISC);
-        if (write(fd, discFrame.data, discFrame.size) == -1)
+    if(cp.role == LlTx) {    
+        enum CheckRecv rc = Start;
+        unsigned char recv[1] = {0};
+
+        alarmCount = 0;
+        while (alarmCount < cp.nRetransmissions)
         {
-            printf("Error sending DISC packet.\n");
-            return -1;
-        }
-        else
-        {
-            printf("DISC packet sent.\n");
-        }
-        // Wait for DISC frame
-        if (checkControlFrame(fd, A_ANSWER_RECEIVER, C_DISC))
-        {
-            printf("Received correct DISC packet from receiver.\n");
-        }
-        else
-        {
-            printf("Error receiving DISC packet from receiver.\n");
-            return -1;
-        }
-        // Send UA frame
-        Frame uaFrame = createControlFrame(A_ANSWER_SENDER, C_UA);
-        if (write(fd, uaFrame.data, uaFrame.size) == -1)
-        {
-            printf("Error sending UA packet.\n");
-            return -1;
-        }
-        else
-        {
-            printf("UA packet sent, terminating connection.\n");
-            sleep(1); // wait for the receiver to receive the UA frame
-        }
-    }
-    else if (cp.role == LlRx)
-    {
-        // Wait for DISC frame, send DISC frame, and finally waits for an UA frame
-        if (checkControlFrame(fd, A_FRAME_SENDER, C_DISC))
-        {
-            printf("Received correct DISC packet from sender.\n");
-            // Send DISC frame
-            Frame discFrame = createControlFrame(A_ANSWER_RECEIVER, C_DISC);
-            if (write(fd, discFrame.data, discFrame.size) == -1)
+            // build and send packet
+            Frame discPacket = createControlFrame(A_FRAME_SENDER, C_DISC);
+            if (write(fd, discPacket.data, discPacket.size) == -1)
             {
-                printf("Error sending DISC packet.\n");
+                printf("Error writing DISC packet.\n");
                 return -1;
             }
             else
             {
                 printf("DISC packet sent.\n");
             }
+            (void)signal(SIGALRM, alarmHandler);
+            alarm(cp.timeout);
+            alarmEnabled = TRUE;
+
+            while (alarmEnabled && (rc != Stop))
+            {
+                ssize_t recvSize = read(fd, recv, 1);
+                if (recvSize > 0)
+                {
+                    switch (rc)
+                    {
+                    default:
+                        break;
+                    case Start:
+                    {
+                        if (recv[0] == FLAG)
+                        {
+                            rc = Flag_Rcv;
+                        }
+                        break;
+                    }
+                    case Flag_Rcv:
+                    {
+                        if (recv[0] == A_ANSWER_RECEIVER)
+                        {
+                            rc = A_Rcv;
+                        }
+                        else if (recv[0] == FLAG)
+                        {
+                            rc = Flag_Rcv;
+                        }
+                        else
+                        {
+                            rc = Start;
+                        }
+                        break;
+                    }
+                    case A_Rcv:
+                    {
+                        if (recv[0] == C_DISC)
+                        {
+                            rc = C_Rcv;
+                        }
+                        else if (recv[0] == FLAG)
+                        {
+                            rc = Flag_Rcv;
+                        }
+                        else
+                        {
+                            rc = Start;
+                        }
+                        break;
+                    }
+                    case C_Rcv:
+                    {
+                        if (recv[0] == (A_ANSWER_RECEIVER ^ C_DISC))
+                        {
+                            rc = Bcc_OK;
+                        }
+                        else if (recv[0] == FLAG)
+                        {
+                            rc = Flag_Rcv;
+                        }
+                        else
+                        {
+                            rc = Start;
+                        }
+                        break;
+                    }
+                    case Bcc_OK:
+                    {
+                        if (recv[0] == FLAG)
+                        {
+                            rc = Stop;
+                        }
+                        else
+                        {
+                            rc = Start;
+                        }
+                        break;
+                    }
+                    }
+                }
+            }
+        }
+        if(rc != Stop) {
+            printf("Failed to receive DISC packet.\n");
+            terminate_connection(fd);
+            return -1;
+        }
+        
+        // send UA
+        Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_UA);
+        if (write(fd, uaPacket.data, uaPacket.size) == -1)
+        {
+            printf("Error writing UA packet.\n");
+            terminate_connection(fd);
+            return -1;
         }
         else
         {
-            printf("Error receiving DISC packet from sender.\n");
-            return -1;
+            printf("UA packet sent.\n");
         }
-        // Wait for UA frame
-        if (checkControlFrame(fd, A_ANSWER_SENDER, C_UA))
+
+        return terminate_connection(fd);
+
+    } else if(cp.role == LlRx) {
+        // wait for DISC and write UA
+        alarmCount = 0;
+
+        while (alarmCount < cp.nRetransmissions)
         {
-            printf("Received correct UA packet from sender, terminating connection.\n");
+            //set alarm
+            (void)signal(SIGALRM, alarmHandler);
+            alarm(cp.timeout);
+            if(checkControlFrame(fd, A_FRAME_SENDER) == C_DISC) {
+                Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_UA);
+                if (write(fd, uaPacket.data, uaPacket.size) == -1)
+                {
+                    printf("Error writing UA packet.\n");
+                    terminate_connection(fd);
+                    return -1;
+                }
+                else
+                {
+                    printf("UA packet sent.\n");
+                }
+                return terminate_connection(fd);
+            }
         }
-        else
-        {
-            printf("Error receiving UA packet from sender.\n");
-            return -1;
-        }
+        printf("Failed to receive DISC packet.\n");
+        terminate_connection(fd);
+        return -1;
     }
-    return terminate_connection(fd);
+    return -1;
 }
