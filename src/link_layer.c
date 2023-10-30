@@ -744,7 +744,7 @@ int llclose(int showStatistics)
         unsigned char recv[1] = {0};
 
         alarmCount = 0;
-        while (alarmCount < cp.nRetransmissions)
+        while ((alarmCount < cp.nRetransmissions) && (rc != Stop))
         {
             // build and send packet
             Frame discPacket = createControlFrame(A_FRAME_SENDER, C_DISC);
@@ -849,7 +849,7 @@ int llclose(int showStatistics)
         }
         
         // send UA
-        Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_UA);
+        Frame uaPacket = createControlFrame(A_ANSWER_SENDER, C_UA);
         if (write(fd, uaPacket.data, uaPacket.size) == -1)
         {
             printf("Error writing UA packet.\n");
@@ -864,28 +864,25 @@ int llclose(int showStatistics)
         return terminate_connection(fd);
 
     } else if(cp.role == LlRx) {
-        // wait for DISC and write UA
+        // wait for DISC and write DISC
         alarmCount = 0;
 
-        while (alarmCount < cp.nRetransmissions)
-        {
-            //set alarm
-            (void)signal(SIGALRM, alarmHandler);
-            alarm(cp.timeout);
-            if(checkControlFrame(fd, A_FRAME_SENDER) == C_DISC) {
-                Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_UA);
-                if (write(fd, uaPacket.data, uaPacket.size) == -1)
-                {
-                    printf("Error writing UA packet.\n");
-                    terminate_connection(fd);
-                    return -1;
-                }
-                else
-                {
-                    printf("UA packet sent.\n");
-                }
-                return terminate_connection(fd);
+        (void)signal(SIGALRM, alarmHandler);
+        alarm(cp.timeout);
+        alarmEnabled = TRUE;
+        if(checkControlFrame(fd, A_FRAME_SENDER) == C_DISC) {
+            Frame uaPacket = createControlFrame(A_ANSWER_RECEIVER, C_DISC);
+            if (write(fd, uaPacket.data, uaPacket.size) == -1)
+            {
+                printf("Error writing DISC packet.\n");
+                terminate_connection(fd);
+                return -1;
             }
+            else
+            {
+                printf("DISC packet sent.\n");
+            }
+            return terminate_connection(fd);
         }
         printf("Failed to receive DISC packet.\n");
         terminate_connection(fd);
