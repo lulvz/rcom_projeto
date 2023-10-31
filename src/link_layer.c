@@ -71,7 +71,7 @@ int llopen(LinkLayer connectionParameters)
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
+    newtio.c_cc[VTIME] = 1; // Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // KEEP AT 0 OMFG IM GOING CRAZY
 
     // Now clean the line and activate the settings for the port
@@ -735,14 +735,12 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     if (write(fd, nackFrame.data, nackFrame.size) == -1)
     {
         printf("Error writing NACK packet.\n");
-        return -1;
     }
     else
     {
         printf("NACK packet sent.\n");
-        return -1;
     }
-    return -1;
+    return 0;
 }
 
 ////////////////////////////////////////////////

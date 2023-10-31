@@ -31,7 +31,7 @@ int mainReceiver(const char *path){
 			fprintf(stderr, "Error receiving packet.\n");
 			return -1;
 		} else if (numBytes == 0) {
-			printf("Closing connection\n");
+			printf("Empty packet received\n");
 			continue;
 		}
 
