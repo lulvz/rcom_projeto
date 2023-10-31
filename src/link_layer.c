@@ -573,7 +573,12 @@ int llread(unsigned char *packet) // packet has 1000bytes size
     unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];
     unsigned char tmpData[MAX_PAYLOAD_SIZE + 1];
 
-    while (rc != Data_Rcv)
+    //set alarm equal to nRetransmissions*timeout plus 1 second to avoid getting stuck
+    (void)signal(SIGALRM, alarmHandler);
+    alarm(cp.nRetransmissions * cp.timeout + 1);
+    alarmEnabled = TRUE;
+    alarmCount = 0;
+    while ((rc != Data_Rcv) && alarmEnabled)
     {
         if (read(fd, recv, 1) > 0)
         {
@@ -690,6 +695,12 @@ int llread(unsigned char *packet) // packet has 1000bytes size
             }
         }
     }
+    if(alarmCount > 0) {
+        printf("llread never ending\n");
+        return -1;
+    }
+    alarm(0);
+    alarmEnabled = FALSE;
     // if flag was found on BCC_OK, the byte before the flag is bcc2 which is xor of all the databytes
     dataSize = destuffIt(stuffedData, stuffedDataSize, tmpData);
 
@@ -751,7 +762,7 @@ int llclose(int showStatistics)
             if (write(fd, discPacket.data, discPacket.size) == -1)
             {
                 printf("Error writing DISC packet.\n");
-                return -1;
+                return terminate_connection(fd);
             }
             else
             {
@@ -844,8 +855,7 @@ int llclose(int showStatistics)
         }
         if(rc != Stop) {
             printf("Failed to receive DISC packet.\n");
-            terminate_connection(fd);
-            return -1;
+            return terminate_connection(fd);
         }
         
         // send UA
@@ -853,8 +863,7 @@ int llclose(int showStatistics)
         if (write(fd, uaPacket.data, uaPacket.size) == -1)
         {
             printf("Error writing UA packet.\n");
-            terminate_connection(fd);
-            return -1;
+            return terminate_connection(fd);
         }
         else
         {
@@ -875,8 +884,7 @@ int llclose(int showStatistics)
             if (write(fd, uaPacket.data, uaPacket.size) == -1)
             {
                 printf("Error writing DISC packet.\n");
-                terminate_connection(fd);
-                return -1;
+                return terminate_connection(fd);
             }
             else
             {
@@ -885,8 +893,7 @@ int llclose(int showStatistics)
             return terminate_connection(fd);
         }
         printf("Failed to receive DISC packet.\n");
-        terminate_connection(fd);
-        return -1;
+        return terminate_connection(fd);
     }
     return -1;
 }
