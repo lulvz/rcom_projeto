@@ -38,5 +38,5 @@ enum CheckRecv {
     Data_Rcv,
     Stop,
 };
-		
+
 #endif

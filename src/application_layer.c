@@ -18,9 +18,11 @@
 // The application data packets look like this:
 // | C | L2 | L1 | P1 | P2 | ... | Pn |
 
+
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
+        
     if (strcmp(role, "tx") == 0)
     {
         LinkLayer ll;
@@ -30,6 +32,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         ll.nRetransmissions = nTries;
         ll.timeout = timeout;
 
+
         if (llopen(ll) == -1)
         {
             printf("Error opening serial port\n");
@@ -37,6 +40,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 	
 	mainTransmitter(filename);
+
+
    }
     else if (strcmp(role, "rx") == 0)
     {
@@ -66,4 +71,5 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("Error closing serial port\n");
         exit(-1);
     }
-}
+
+    }

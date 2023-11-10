@@ -499,10 +499,11 @@ unsigned char checkControlFrame(int fd, unsigned char addressField)
 
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    Frame frame = createInformationFrame(buf, bufSize, sequenceNumber, A_FRAME_SENDER);
+//Frame frame = createInformationFrame(buf, bufSize, sequenceNumber, A_FRAME_SENDER);
     alarmCount = 0;
     while (alarmCount < cp.nRetransmissions)
     {
+	Frame frame = createInformationFrame(buf, bufSize, sequenceNumber, A_FRAME_SENDER);
         if (write(fd, frame.data, frame.size) == -1)
         {
             printf("Error writing data packet.\n");

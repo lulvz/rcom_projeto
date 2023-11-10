@@ -15,6 +15,11 @@ int mainReceiver(const char *path){
 	int numBytes = 0;
 	const char *filename;
 
+	clock_t start, end;
+    	double cpuTimeUsed;
+    	start = clock();
+
+
 	const char *temp = path + strlen(path) - 1;
 	while(*temp != '/'){
 		if(temp == path) break;	
@@ -50,7 +55,10 @@ int mainReceiver(const char *path){
 		}
 
 	}
-	
+	end = clock();
+    	cpuTimeUsed = ((double) (end - start)) / CLOCKS_PER_SEC;
+    	printf("The file was transmitted in %f seconds\n", cpuTimeUsed);
+
 	printf("Received all the packets!!!\n");
 	return 0;
 }

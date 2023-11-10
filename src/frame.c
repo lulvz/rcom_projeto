@@ -1,5 +1,9 @@
 #include "frame.h"
 
+
+int FER_BCC1 = 0;
+int FER_BCC2 = 0;
+
 // returns the size of the new stuffed data or -1 on error, should take a pointer to an array with size MAX_STUFFED_DATA_SIZE
 int stuffIt(const unsigned char *buf, int bufSize, unsigned char stuffedData[MAX_STUFFED_DATA_SIZE]) {
     int stuffedDataIdx = 0;
@@ -56,6 +60,13 @@ Frame createInformationFrame(const unsigned char *data, int dataSize, int sequen
     frame.data[2] = (sequenceNumber << 6) | 0x00; // 0x00 = I-frame number 0 | 0x40 = I-frame number 1
     printf("In createInformationFrame func frame.data[2] is %x\n", frame.data[2]);
     frame.data[3] = frame.data[1] ^ frame.data[2]; // BCC1
+						  
+    int x = rand() % 100;
+    if(x < FER_BCC1 ){
+	    printf("RAND ---> %d\n", x);
+	    frame.data[3] = frame.data[3] ^ 0xFF;
+    }
+    printf("Control frame %x\n", frame.data[3]);
 
     unsigned char bcc2 = 0;
     // bcc2 is xor of all the data bytes
@@ -67,6 +78,7 @@ Frame createInformationFrame(const unsigned char *data, int dataSize, int sequen
     unsigned char dataWithBcc2[MAX_PAYLOAD_SIZE+1];
     memcpy(dataWithBcc2, data, dataSize);
     dataWithBcc2[dataSize] = bcc2;
+    if(rand() % 100 < FER_BCC2) dataWithBcc2[dataSize] ^= dataWithBcc2[dataSize] ^ 0xFF;
     // printf("bcc2 in dataWithBcc2 is %x\nbcc2 in bcc2 is %x\n", dataWithBcc2[dataSize], bcc2);
 
     unsigned char stuffedData[MAX_STUFFED_DATA_SIZE];

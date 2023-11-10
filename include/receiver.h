@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 
 #include "constants.h"
 #include "link_layer.h"
