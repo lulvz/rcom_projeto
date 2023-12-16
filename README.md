@@ -1,12 +1,12 @@
-# Link Layer Transfer Protocol
+# Transport Layer Protocol
 
-This project implements a transfer protocol that operates at the link layer and an application layer protocol that uses it to transfer files between two computers.
+This project implements a transfer protocol that operates on top of the link layer and an application layer protocol that uses it to transfer files between two computers.
 
 ## Overview
 
-The link layer transfer protocol is responsible for moving frames from one node to another, and handling errors that occur along the way.
+The transport layer protocol is responsible for moving frames from one node to another, and handling errors that occur along the way.
 This protocol can handle noise, lost frames, and frames that are received out of order.
-The application layer implemented on top of the link layer is responsible for handling the reassembly of the frames into the original file.
+The application layer implemented on top of the it is responsible for handling the reassembly of the frames into the original file.
 
 ## Files
 
