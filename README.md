@@ -1,6 +1,6 @@
-# Transport Layer Protocol
+# EZFile
 
-This project implements a transfer protocol that operates on top of the link layer and an application layer protocol that uses it to transfer files between two computers.
+This project implements a Transport Layer Protocol that operates on top of the link layer and an application layer protocol that uses it to transfer files between two computers.
 
 ## Overview
 
