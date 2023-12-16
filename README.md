@@ -1,6 +1,6 @@
 # Link Layer Transfer Protocol
 
-This project implements a transfer protocol that operates at the link layer. 
+This project implements a transfer protocol that operates at the link layer and an application layer protocol that uses it to transfer files between two computers.
 
 ## Overview
 
